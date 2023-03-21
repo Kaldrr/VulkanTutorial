@@ -9,15 +9,43 @@ qt_standard_project_setup()
 
 set(SOURCE_FILES 
 	main.cpp
-	MainWindow.cpp     include/VulkanLoadingScreen/MainWindow.h
-    VulkanRenderer.cpp include/VulkanLoadingScreen/VulkanRenderer.h
-    VulkanInstance.cpp include/VulkanLoadingScreen/VulkanInstance.h
+	MainWindow.cpp     
+    VulkanRenderer.cpp 
+    VulkanInstance.cpp 
+)
+set(HEADER_FILES
+    include/VulkanLoadingScreen/MainWindow.h
+    include/VulkanLoadingScreen/VulkanRenderer.h
+    include/VulkanLoadingScreen/VulkanInstance.h
+)
+set(SHADER_FILES
+    Shaders/shader.frag
+    Shaders/shader.vert
 )
 
 qt_add_executable(VulkanLoadingScreen
     MANUAL_FINALIZATION
         ${SOURCE_FILES}
+        ${HEADER_FILES}
+        ${SHADER_FILES}
 )
+
+source_group(
+    TREE "${CMAKE_CURRENT_SOURCE_DIR}/include/VulkanLoadingScreen/"
+    PREFIX "Header Files"
+    FILES ${HEADER_FILES}
+)
+source_group(
+    TREE "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/"
+    PREFIX "Shader Files"
+    FILES ${SHADER_FILES}
+)
+source_group(
+    TREE "${CMAKE_CURRENT_SOURCE_DIR}/"
+    PREFIX "Source Files"
+    FILES ${SOURCE_FILES}
+)
+
 
 target_link_libraries(VulkanLoadingScreen
 	PRIVATE

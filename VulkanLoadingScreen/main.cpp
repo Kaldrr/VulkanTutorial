@@ -5,6 +5,8 @@
 
 #include <VulkanLoadingScreen/VulkanInstance.h>
 
+#include <concepts>
+
 // Q_LOGGING_CATEGORY(lcVk, "qt.vulkan")
 
 namespace
@@ -40,8 +42,6 @@ std::vector<const char*> ToVector(const QByteArrayList& list)
 
 	return outVector;
 }
-
-std::optional<VulkanInstance> vulkanInstance{};
 } // namespace
 
 int main(int argc, char** argv)
@@ -51,6 +51,7 @@ int main(int argc, char** argv)
 	QVulkanInstance qtVulkanInstance{};
 
 	constexpr bool UseExternalVulkan = true;
+	[[maybe_unused]] std::optional<VulkanInstance> vulkanInstance{};
 	if constexpr (UseExternalVulkan)
 	{
 		VulkanInstance& vulkan = vulkanInstance.emplace();
@@ -63,7 +64,7 @@ int main(int argc, char** argv)
 		vulkan.InitializeVulkanInstance(vulkanLayersVector,
 		                                vulkanExtensionsVector);
 		vulkan.InitializeDebugMessenger();
-		// QMainWindow ALWAYS creates it's own device
+		// QVulkanWindow ALWAYS creates it's own device
 		// vulkanInstance->InitializeLogicalDevice(vulkanLayersVector,
 		//                                       vulkanExtensionsVector);
 		qtVulkanInstance.setVkInstance(vulkan.GetVulkanInstance());
@@ -77,12 +78,24 @@ int main(int argc, char** argv)
 		       qtVulkanInstance.errorCode());
 
 	const int returnCode = [&qtVulkanInstance] {
-		MainWindow window;
-		window.setVulkanInstance(&qtVulkanInstance);
-		window.resize(1024, 768);
-		window.show();
+		try
+		{
+			MainWindow window;
+			window.setVulkanInstance(&qtVulkanInstance);
+			window.resize(1024, 768);
+			window.show();
 
-		return QGuiApplication::exec();
+			return QGuiApplication::exec();
+		}
+		catch (const std::exception& e)
+		{
+			qFatal("Fatal error: %s", e.what());
+		}
+		catch (...)
+		{
+			qFatal("Unknown fatal error");
+		}
+		return -1;
 	}();
 	// Destroy both MainWindow and QVulkanInstance
 	// So they release all their Vulkan resource first

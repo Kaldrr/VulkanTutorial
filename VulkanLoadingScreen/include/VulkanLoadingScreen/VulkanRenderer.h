@@ -23,8 +23,9 @@ private:
 private:
 	QVulkanWindow* m_Window{ nullptr };
 	// QVulkanDeviceFunctions* m_DeviceFunctions{ nullptr };
+	QSize m_PreviousWindowSize{ 0, 0 };
+	
 	vk::Device m_Device{};
-
 	vk::RenderPass m_RenderPass{};
 	vk::PipelineLayout m_PipelineLayout{};
 	vk::Pipeline m_GraphicsPipeline{};

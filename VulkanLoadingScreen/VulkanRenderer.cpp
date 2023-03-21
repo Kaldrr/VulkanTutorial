@@ -7,8 +7,6 @@
 
 #include <filesystem>
 
-// VkFramebuffer is done by the Qt?
-
 namespace
 {
 [[nodiscard]] vk::RenderPass CreateRenderPass(
@@ -159,8 +157,9 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 
 	constexpr vk::ShaderModuleCreateFlags shaderFlags{};
 	const vk::ShaderModuleCreateInfo shaderInfo{
-		shaderFlags, static_cast<std::size_t>(blob.size()),
-		reinterpret_cast<const std::uint32_t*>(blob.constData())
+		shaderFlags,
+		static_cast<std::size_t>(blob.size()),
+		reinterpret_cast<const std::uint32_t*>(blob.constData()),
 	};
 
 	// No result?
@@ -205,7 +204,7 @@ void VulkanRenderer::initResources()
 		static_cast<std::uint32_t>(dynamicStates.size()),
 		dynamicStates.data(),
 	};
-	// Vertex are hardcoded into shaders for no, so no input :^)
+	// Vertex are hardcoded into shaders for now, so no input :^)
 	constexpr vk::PipelineVertexInputStateCreateInfo
 	    pipelineVertexInputInfo{
 		    vk::PipelineVertexInputStateCreateFlags{},
@@ -219,7 +218,7 @@ void VulkanRenderer::initResources()
 	    inputAssemblyInfo{
 		    vk::PipelineInputAssemblyStateCreateFlags{},
 		    vk::PrimitiveTopology::eTriangleList,
-		    static_cast<vk::Bool32>(false),
+		    VK_FALSE,
 	    };
 	constexpr vk::PipelineViewportStateCreateInfo dynamicViewportInfo{
 		vk::PipelineViewportStateCreateFlags{}, 1, nullptr, 1, nullptr,
@@ -297,8 +296,17 @@ void VulkanRenderer::initResources()
 void VulkanRenderer::initSwapChainResources()
 {
 	const QSize size              = m_Window->swapChainImageSize();
+	// Window has been minimised, using this size for framebuffer is illegal
+	// + when window will be visible again it should return to previous size
+	// or at least we will get an event about resizing again :)
+	if (size.height() == 0 || size.width() == 0)
+		return;
+
 	const int swapChainImageCount = m_Window->swapChainImageCount();
-	assert(swapChainImageCount == 3);
+
+	fmt::print(
+	    "Creating SwapChainResources for size [{}x{}] and {} images\n",
+	    size.width(), size.height(), swapChainImageCount);
 
 	for (int i{ 0 }; i < swapChainImageCount; ++i)
 	{
@@ -322,9 +330,10 @@ void VulkanRenderer::initSwapChainResources()
 
 void VulkanRenderer::releaseSwapChainResources()
 {
-	for (const vk::Framebuffer& framebuffer : m_Framebuffers)
+	const int swapChainImageCount = m_Window->swapChainImageCount();
+	for (int i{ 0 }; i < swapChainImageCount; ++i)
 	{
-		m_Device.destroy(framebuffer);
+		m_Device.destroy(m_Framebuffers[i]);
 	}
 }
 
@@ -337,10 +346,15 @@ void VulkanRenderer::releaseResources()
 
 void VulkanRenderer::startNextFrame()
 {
-	const int currentFrame = m_Window->currentFrame();
-	fmt::print("Current frame: {}\n", currentFrame);
-
 	const QSize size = m_Window->swapChainImageSize();
+	// Window not visible, no need to render anything
+	if (size.height() == 0 && size.width() == 0)
+		return;
+	
+	// TODO: Difference between currentFrame and
+	// currentSwapChainImageIndex???
+	const int currentFrame = m_Window->currentSwapChainImageIndex();
+
 	const vk::SampleCountFlagBits sampleCount =
 	    static_cast<vk::SampleCountFlagBits>(
 	        m_Window->sampleCountFlagBits());
