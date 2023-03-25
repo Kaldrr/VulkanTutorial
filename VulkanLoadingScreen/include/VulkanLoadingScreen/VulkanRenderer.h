@@ -19,11 +19,11 @@ public:
 
 private:
 	[[nodiscard]] vk::ShaderModule createShader(const QString& name);
+	void createVertexBuffer();
 
 private:
 	QVulkanWindow* m_Window{ nullptr };
 	// QVulkanDeviceFunctions* m_DeviceFunctions{ nullptr };
-	QSize m_PreviousWindowSize{ 0, 0 };
 	
 	vk::Device m_Device{};
 	vk::RenderPass m_RenderPass{};
@@ -32,4 +32,7 @@ private:
 	std::array<vk::Framebuffer,
 	           QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT>
 	    m_Framebuffers{};
+
+	vk::Buffer m_VertexBuffer{};
+	vk::DeviceMemory m_VertexBufferMemory{};
 };

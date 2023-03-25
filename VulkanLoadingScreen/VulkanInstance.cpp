@@ -24,7 +24,7 @@ public:
 VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     const VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
     const VkDebugUtilsMessageTypeFlagsEXT messageType,
-    const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
+    const VkDebugUtilsMessengerCallbackDataEXT* const pCallbackData,
     void* const pUserData)
 {
 	if (messageSeverity >=
@@ -141,7 +141,7 @@ void VulkanInstance::InitializeDebugMessenger()
 	{
 		fmt::print(stderr,
 		           "{} called with uninitialized VulkanInstance",
-					__FUNCTION__);
+		           __FUNCTION__);
 		return;
 	}
 

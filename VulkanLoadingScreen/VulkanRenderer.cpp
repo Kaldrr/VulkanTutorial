@@ -6,10 +6,71 @@
 #include <fmt/core.h>
 
 #include <filesystem>
+#include <numbers>
 
 namespace
 {
-[[nodiscard]] vk::RenderPass CreateRenderPass(
+struct Vertex
+{
+	QVector2D m_Position{};
+	QVector3D m_Color{};
+
+	static_assert(sizeof(QVector2D) == sizeof(std::array<float, 2>));
+	static_assert(sizeof(QVector3D) == sizeof(std::array<float, 3>));
+
+	constexpr static vk::VertexInputBindingDescription
+	getBindingDescription()
+	{
+		constexpr vk::VertexInputBindingDescription bindingDescription{
+			0u,
+			sizeof(Vertex),
+			vk::VertexInputRate::eVertex,
+		};
+
+		return bindingDescription;
+	}
+
+	constexpr static std::array<vk::VertexInputAttributeDescription, 2>
+	getAttributeDescriptions()
+	{
+		constexpr std::array<vk::VertexInputAttributeDescription, 2>
+		    attributeDescriptions{
+			    // Position description
+			    vk::VertexInputAttributeDescription{
+			        0,
+			        0,
+			        vk::Format::eR32G32Sfloat,
+			        offsetof(Vertex, m_Position),
+			    },
+			    // Color description
+			    vk::VertexInputAttributeDescription{
+			        1,
+			        0,
+			        vk::Format::eR32G32B32Sfloat,
+			        offsetof(Vertex, m_Color),
+			    },
+		    };
+
+		return attributeDescriptions;
+	}
+};
+
+constexpr std::array<Vertex, 3> VertexData{
+	Vertex{
+	    QVector2D{ 0.0f, -0.5f },
+	    QVector3D{ 1.0f, 0.0f, 0.0f },
+	},
+	Vertex{
+	    QVector2D{ 0.5f, 0.5f },
+	    QVector3D{ 0.0f, 1.0f, 0.0f },
+	},
+	Vertex{
+	    QVector2D{ -0.5f, 0.5f },
+	    QVector3D{ 0.0f, 0.0f, 1.0f },
+	},
+};
+
+[[nodiscard]] vk::RenderPass createRenderPass(
     const vk::Device& device,
     const VkFormat colorFormat,
     [[maybe_unused]] const VkFormat depthFormat,
@@ -54,7 +115,7 @@ namespace
 
 [[nodiscard]] std::tuple<vk::PipelineColorBlendStateCreateInfo,
                          vk::PipelineLayout>
-CreatePipelineLayoutInfo(const vk::Device& device)
+createPipelineLayoutInfo(const vk::Device& device)
 {
 	// Band-aid as we need to return address outside of the function...
 	constexpr static vk::PipelineColorBlendAttachmentState
@@ -90,31 +151,26 @@ CreatePipelineLayoutInfo(const vk::Device& device)
 		     device.createPipelineLayout(pipelineLayoutCreateInfo) };
 }
 
-[[maybe_unused]] void CreateViewportStatic(const QSize size)
+std::uint32_t findMemoryType(
+    const vk::PhysicalDevice physicalDevice,
+    const vk::MemoryPropertyFlags memoryProperties,
+    const std::uint32_t typeFilter)
 {
-	const vk::Viewport viewport{
-		0.f,
-		0.f,
-		static_cast<float>(size.width()),
-		static_cast<float>(size.height()),
-		0.f,
-		1.f,
-	};
-	const vk::Rect2D scissor{
-		vk::Offset2D{ 0, 0 },
-		vk::Extent2D{
-		    static_cast<std::uint32_t>(size.width()),
-		    static_cast<std::uint32_t>(size.height()),
-		},
-	};
+	const vk::PhysicalDeviceMemoryProperties deviceMemoryProperties =
+	    physicalDevice.getMemoryProperties();
 
-	// Only needed when we don't specify that we do it dynamically?
-	const vk::PipelineViewportStateCreateInfo viewportStateInfo{
-		vk::PipelineViewportStateCreateFlags{},
-		1,
-		&viewport,
-		1,
-		&scissor,
+	for (std::uint32_t i{ 0u };
+	     i < deviceMemoryProperties.memoryTypeCount; ++i)
+	{
+		if ((typeFilter & (1 << i)) &&
+		    (deviceMemoryProperties.memoryTypes[i].propertyFlags &
+		     memoryProperties) == memoryProperties)
+		{
+			return i;
+		}
+	}
+	throw std::runtime_error{
+		"Failed to find suitable memory for buffer"
 	};
 }
 } // namespace
@@ -155,9 +211,8 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 	const QByteArray blob = file.readAll();
 	file.close();
 
-	constexpr vk::ShaderModuleCreateFlags shaderFlags{};
 	const vk::ShaderModuleCreateInfo shaderInfo{
-		shaderFlags,
+		vk::ShaderModuleCreateFlags{},
 		static_cast<std::size_t>(blob.size()),
 		reinterpret_cast<const std::uint32_t*>(blob.constData()),
 	};
@@ -166,9 +221,45 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 	return m_Device.createShaderModule(shaderInfo);
 }
 
+void VulkanRenderer::createVertexBuffer()
+{
+	constexpr vk::BufferCreateInfo bufferInfo{
+		vk::BufferCreateFlags{},
+		vk::DeviceSize{ sizeof(VertexData) },
+		vk::BufferUsageFlagBits::eVertexBuffer,
+		vk::SharingMode::eExclusive,
+		0,
+		nullptr,
+	};
+
+	m_VertexBuffer = m_Device.createBuffer(bufferInfo);
+
+	const vk::MemoryRequirements memoryRequirements =
+	    m_Device.getBufferMemoryRequirements(m_VertexBuffer);
+	const vk::MemoryAllocateInfo allocInfo{
+		vk::DeviceSize{ memoryRequirements.size },
+		findMemoryType(vk::PhysicalDevice{ m_Window->physicalDevice() },
+		               vk::MemoryPropertyFlags{
+		                   vk::MemoryPropertyFlagBits::eHostVisible |
+		                   vk::MemoryPropertyFlagBits::eHostCoherent },
+		               memoryRequirements.memoryTypeBits),
+	};
+
+	m_VertexBufferMemory = m_Device.allocateMemory(allocInfo);
+	m_Device.bindBufferMemory(m_VertexBuffer, m_VertexBufferMemory, 0);
+
+	void* const devicePtr = m_Device.mapMemory(
+	    m_VertexBufferMemory, 0, bufferInfo.size, vk::MemoryMapFlags{});
+	std::memcpy(devicePtr, static_cast<const void*>(&VertexData),
+	            sizeof(VertexData));
+	m_Device.unmapMemory(m_VertexBufferMemory);
+}
+
 void VulkanRenderer::initResources()
 {
 	m_Device = vk::Device{ m_Window->device() };
+
+	createVertexBuffer();
 
 	// Shaders
 	const vk::ShaderModule vertexShaderModule =
@@ -204,14 +295,20 @@ void VulkanRenderer::initResources()
 		static_cast<std::uint32_t>(dynamicStates.size()),
 		dynamicStates.data(),
 	};
-	// Vertex are hardcoded into shaders for now, so no input :^)
-	constexpr vk::PipelineVertexInputStateCreateInfo
+
+	constexpr vk::VertexInputBindingDescription
+	    vertexBindingDescription = Vertex::getBindingDescription();
+	constexpr std::array<vk::VertexInputAttributeDescription, 2>
+	    vertexAttributeDescription = Vertex::getAttributeDescriptions();
+
+	const vk::PipelineVertexInputStateCreateInfo
 	    pipelineVertexInputInfo{
 		    vk::PipelineVertexInputStateCreateFlags{},
-		    0,
-		    nullptr,
-		    0,
-		    nullptr,
+		    1,
+		    &vertexBindingDescription,
+		    static_cast<std::uint32_t>(
+		        size(vertexAttributeDescription)),
+		    vertexAttributeDescription.data(),
 	    };
 
 	constexpr vk::PipelineInputAssemblyStateCreateInfo
@@ -252,11 +349,11 @@ void VulkanRenderer::initResources()
 
 	/* Skip multisampling setup, it's handled by VulkanWindow? */
 	m_RenderPass =
-	    CreateRenderPass(m_Device, m_Window->colorFormat(),
+	    createRenderPass(m_Device, m_Window->colorFormat(),
 	                     m_Window->depthStencilFormat(), sampleCount);
 	vk::PipelineColorBlendStateCreateInfo colorBlendCreateInfo{};
 	std::tie(colorBlendCreateInfo, m_PipelineLayout) =
-	    CreatePipelineLayoutInfo(m_Device);
+	    createPipelineLayoutInfo(m_Device);
 
 	const vk::GraphicsPipelineCreateInfo pipelineCreateInfo{
 		vk::PipelineCreateFlags{},
@@ -295,10 +392,11 @@ void VulkanRenderer::initResources()
 
 void VulkanRenderer::initSwapChainResources()
 {
-	const QSize size              = m_Window->swapChainImageSize();
-	// Window has been minimised, using this size for framebuffer is illegal
-	// + when window will be visible again it should return to previous size
-	// or at least we will get an event about resizing again :)
+	const QSize size = m_Window->swapChainImageSize();
+	// Window has been minimised, using this size for framebuffer is
+	// illegal
+	// + when window will be visible again it should return to previous
+	// size or at least we will get an event about resizing again :)
 	if (size.height() == 0 || size.width() == 0)
 		return;
 
@@ -342,15 +440,50 @@ void VulkanRenderer::releaseResources()
 	m_Device.destroy(m_GraphicsPipeline);
 	m_Device.destroy(m_PipelineLayout);
 	m_Device.destroy(m_RenderPass);
+	m_Device.destroy(m_VertexBuffer);
+	m_Device.free(m_VertexBufferMemory);
 }
 
 void VulkanRenderer::startNextFrame()
 {
+	{
+		static std::array<int, 3> activeIndices{ 0, 1, 2 };
+		static float angle{ 0.0f };
+		constexpr float delta =
+		    120.f * std::numbers::pi_v<float> / 180.0f;
+
+		void* const devicePtr = m_Device.mapMemory(
+		    m_VertexBufferMemory, 0, sizeof(VertexData),
+		    vk::MemoryMapFlags{});
+		auto* const deviceVertices =
+		    reinterpret_cast<std::array<Vertex, 3>*>(devicePtr);
+
+		float f{ 0.f };
+		int i{ 0 };
+		for (Vertex& vertex : *deviceVertices)
+		{
+			vertex.m_Position =
+			    QVector2D{ std::cos(angle + f), std::sin(angle + f) };
+			f += delta;
+
+			int& colorIndex = activeIndices[i];
+			if (vertex.m_Color[colorIndex] == 0.f)
+			{
+				colorIndex = (colorIndex + 1) % 3;
+			}
+			vertex.m_Color[colorIndex] -= 1.f / 64.f;
+			vertex.m_Color[(colorIndex + 1) % 3] += 1.f / 64.f;
+			++i;
+		}
+		m_Device.unmapMemory(m_VertexBufferMemory);
+
+		angle += 1.f * std::numbers::pi_v<float> / 180.0f;
+	}
 	const QSize size = m_Window->swapChainImageSize();
 	// Window not visible, no need to render anything
 	if (size.height() == 0 && size.width() == 0)
 		return;
-	
+
 	// TODO: Difference between currentFrame and
 	// currentSwapChainImageIndex???
 	const int currentFrame = m_Window->currentSwapChainImageIndex();
@@ -401,15 +534,16 @@ void VulkanRenderer::startNextFrame()
 	};
 	const vk::Rect2D scissor{
 		vk::Offset2D{ 0, 0 },
-		vk::Extent2D{
-		    static_cast<std::uint32_t>(size.width()),
-		    static_cast<std::uint32_t>(size.height()),
-		},
+		vk::Extent2D{ static_cast<std::uint32_t>(size.width()),
+		              static_cast<std::uint32_t>(size.height()) },
 	};
 	commandBuffer.setViewport(0u, 1u, &viewport);
 	commandBuffer.setScissor(0u, 1u, &scissor);
 
-	commandBuffer.draw(3, 1, 0, 0);
+	constexpr vk::DeviceSize offset{ 0 };
+	commandBuffer.bindVertexBuffers(0, 1, &m_VertexBuffer, &offset);
+	commandBuffer.draw(static_cast<std::uint32_t>(VertexData.size()), 1,
+	                   0, 0);
 
 	commandBuffer.endRenderPass();
 

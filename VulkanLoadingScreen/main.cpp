@@ -82,7 +82,7 @@ int main(int argc, char** argv)
 		{
 			MainWindow window;
 			window.setVulkanInstance(&qtVulkanInstance);
-			window.resize(1024, 768);
+			window.resize(800, 800);
 			window.show();
 
 			return QGuiApplication::exec();
@@ -102,8 +102,7 @@ int main(int argc, char** argv)
 	qtVulkanInstance.destroy();
 
 	// QVulkanInstance doesn't destroy VulkanInstance it does not own
-	if (vulkanInstance.has_value())
-		vulkanInstance.reset();
+	vulkanInstance.reset();
 
 	return returnCode;
 }
