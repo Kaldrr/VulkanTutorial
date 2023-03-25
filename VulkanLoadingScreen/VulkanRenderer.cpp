@@ -55,20 +55,25 @@ struct Vertex
 	}
 };
 
-constexpr std::array<Vertex, 3> VertexData{
+constexpr std::array<Vertex, 4> VertexData{
 	Vertex{
-	    QVector2D{ 0.0f, -0.5f },
-	    QVector3D{ 1.0f, 0.0f, 0.0f },
+	    QVector2D{ -0.5f, -0.5f },
+	    QVector3D{ 1.0f, 1.0f, 1.0f },
+	},
+	Vertex{
+	    QVector2D{ 0.5f, -0.5f },
+	    QVector3D{ 0.0f, 1.0f, 0.0f },
 	},
 	Vertex{
 	    QVector2D{ 0.5f, 0.5f },
-	    QVector3D{ 0.0f, 1.0f, 0.0f },
+	    QVector3D{ 1.0f, 0.0f, 0.0f },
 	},
 	Vertex{
 	    QVector2D{ -0.5f, 0.5f },
 	    QVector3D{ 0.0f, 0.0f, 1.0f },
 	},
 };
+constexpr std::array<std::uint16_t, 6> IndexData{ 0, 1, 2, 2, 3, 0 };
 
 [[nodiscard]] vk::RenderPass createRenderPass(
     const vk::Device& device,
@@ -292,12 +297,14 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 
 void VulkanRenderer::createVertexBuffer()
 {
+	constexpr vk::DeviceSize memorySize{ sizeof(VertexData) };
+
 	const vk::PhysicalDevice physicalDevice{
 		m_Window->physicalDevice()
 	};
 
 	const auto [stagingBuffer, stagingMemory] = createDeviceBuffer(
-	    sizeof(VertexData),
+	    memorySize,
 	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
 	    vk::MemoryPropertyFlags{
 	        vk::MemoryPropertyFlagBits::eHostVisible |
@@ -305,20 +312,58 @@ void VulkanRenderer::createVertexBuffer()
 	    m_Device, physicalDevice);
 
 	void* const devicePtr = m_Device.mapMemory(
-	    stagingMemory, 0, sizeof(VertexData), vk::MemoryMapFlags{});
+	    stagingMemory, 0, memorySize, vk::MemoryMapFlags{});
 	std::memcpy(devicePtr, static_cast<const void*>(&VertexData),
-	            sizeof(VertexData));
+	            memorySize);
 	m_Device.unmapMemory(stagingMemory);
 
 	std::tie(m_VertexBuffer, m_VertexBufferMemory) = createDeviceBuffer(
-	    sizeof(VertexData),
+	    memorySize,
 	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
 	                          vk::BufferUsageFlagBits::eVertexBuffer },
 	    vk::MemoryPropertyFlags{
 	        vk::MemoryPropertyFlagBits::eDeviceLocal },
 	    m_Device, physicalDevice);
 
-	copyBuffer(m_VertexBuffer, stagingBuffer, sizeof(VertexData),
+	copyBuffer(m_VertexBuffer, stagingBuffer, memorySize,
+	           vk::CommandPool{ m_Window->graphicsCommandPool() },
+	           m_Device, vk::Queue{ m_Window->graphicsQueue() });
+
+	m_Device.destroy(stagingBuffer);
+	m_Device.free(stagingMemory);
+}
+
+void VulkanRenderer::createIndexBuffer()
+{
+	constexpr vk::DeviceSize memorySize{ sizeof(IndexData) };
+
+	const vk::PhysicalDevice physicalDevice{
+		m_Window->physicalDevice()
+	};
+
+	const auto [stagingBuffer, stagingMemory] = createDeviceBuffer(
+	    memorySize,
+	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
+	    vk::MemoryPropertyFlags{
+	        vk::MemoryPropertyFlagBits::eHostVisible |
+	        vk::MemoryPropertyFlagBits::eHostCoherent },
+	    m_Device, physicalDevice);
+
+	void* const devicePtr = m_Device.mapMemory(
+	    stagingMemory, 0, memorySize, vk::MemoryMapFlags{});
+	std::memcpy(devicePtr, static_cast<const void*>(&IndexData),
+	            memorySize);
+	m_Device.unmapMemory(stagingMemory);
+
+	std::tie(m_IndexBuffer, m_IndexBufferMemory) = createDeviceBuffer(
+	    memorySize,
+	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
+	                          vk::BufferUsageFlagBits::eIndexBuffer },
+	    vk::MemoryPropertyFlags{
+	        vk::MemoryPropertyFlagBits::eDeviceLocal },
+	    m_Device, physicalDevice);
+
+	copyBuffer(m_IndexBuffer, stagingBuffer, memorySize,
 	           vk::CommandPool{ m_Window->graphicsCommandPool() },
 	           m_Device, vk::Queue{ m_Window->graphicsQueue() });
 
@@ -331,6 +376,7 @@ void VulkanRenderer::initResources()
 	m_Device = vk::Device{ m_Window->device() };
 
 	createVertexBuffer();
+	createIndexBuffer();
 
 	// Shaders
 	const vk::ShaderModule vertexShaderModule =
@@ -511,6 +557,8 @@ void VulkanRenderer::releaseResources()
 	m_Device.destroy(m_GraphicsPipeline);
 	m_Device.destroy(m_PipelineLayout);
 	m_Device.destroy(m_RenderPass);
+	m_Device.destroy(m_IndexBuffer);
+	m_Device.free(m_IndexBufferMemory);
 	m_Device.destroy(m_VertexBuffer);
 	m_Device.free(m_VertexBufferMemory);
 }
@@ -614,8 +662,10 @@ void VulkanRenderer::startNextFrame()
 
 	constexpr vk::DeviceSize offset{ 0 };
 	commandBuffer.bindVertexBuffers(0, 1, &m_VertexBuffer, &offset);
-	commandBuffer.draw(static_cast<std::uint32_t>(VertexData.size()), 1,
-	                   0, 0);
+	commandBuffer.bindIndexBuffer(m_IndexBuffer, 0,
+	                              vk::IndexType::eUint16);
+	commandBuffer.drawIndexed(
+	    static_cast<std::uint32_t>(IndexData.size()), 1, 0, 0, 0);
 
 	commandBuffer.endRenderPass();
 

@@ -20,6 +20,7 @@ public:
 private:
 	[[nodiscard]] vk::ShaderModule createShader(const QString& name);
 	void createVertexBuffer();
+	void createIndexBuffer();
 
 private:
 	QVulkanWindow* m_Window{ nullptr };
@@ -35,4 +36,7 @@ private:
 
 	vk::Buffer m_VertexBuffer{};
 	vk::DeviceMemory m_VertexBufferMemory{};
+
+	vk::Buffer m_IndexBuffer{};
+	vk::DeviceMemory m_IndexBufferMemory{};
 };
