@@ -173,6 +173,75 @@ std::uint32_t findMemoryType(
 		"Failed to find suitable memory for buffer"
 	};
 }
+
+std::tuple<vk::Buffer, vk::DeviceMemory> createDeviceBuffer(
+    const vk::DeviceSize bufferSize,
+    const vk::BufferUsageFlags bufferFlags,
+    const vk::MemoryPropertyFlags memoryFlags,
+    const vk::Device& device,
+    const vk::PhysicalDevice& physicalDevie)
+{
+	const vk::BufferCreateInfo bufferInfo{
+		vk::BufferCreateFlags{},     bufferSize, bufferFlags,
+		vk::SharingMode::eExclusive, 0,          nullptr,
+	};
+
+	vk::Buffer deviceBuffer = device.createBuffer(bufferInfo);
+
+	const vk::MemoryRequirements memoryRequirements =
+	    device.getBufferMemoryRequirements(deviceBuffer);
+
+	const vk::MemoryAllocateInfo allocInfo{
+		vk::DeviceSize{ memoryRequirements.size },
+		findMemoryType(physicalDevie, memoryFlags,
+		               memoryRequirements.memoryTypeBits),
+	};
+	vk::DeviceMemory deviceMemory = device.allocateMemory(allocInfo);
+	device.bindBufferMemory(deviceBuffer, deviceMemory,
+	                        vk::DeviceSize{ 0 });
+
+	return std::tuple{ deviceBuffer, deviceMemory };
+}
+
+void copyBuffer(const vk::Buffer& dstBuffer,
+                const vk::Buffer& srcBuffer,
+                const vk::DeviceSize size,
+                const vk::CommandPool& commandPool,
+                const vk::Device& device,
+                const vk::Queue& graphicsQueue)
+{
+	// Create a command buffer to copy buffers around
+	const vk::CommandBufferAllocateInfo allocInfo{
+		commandPool,
+		vk::CommandBufferLevel::ePrimary,
+		1,
+		nullptr,
+	};
+
+	const std::vector<vk::CommandBuffer> commandBuffers =
+	    device.allocateCommandBuffers(allocInfo);
+	assert(commandBuffers.size() == 1);
+	constexpr vk::CommandBufferBeginInfo beginInfo{
+		vk::CommandBufferUsageFlags{
+		    vk::CommandBufferUsageFlagBits::eOneTimeSubmit },
+		nullptr, nullptr
+	};
+
+	const vk::CommandBuffer& commandBuffer = commandBuffers.at(0);
+	commandBuffer.begin(beginInfo);
+	commandBuffer.copyBuffer(srcBuffer, dstBuffer,
+	                         vk::BufferCopy{ vk::DeviceSize{ 0 },
+	                                         vk::DeviceSize{ 0 },
+	                                         vk::DeviceSize{ size } });
+	commandBuffer.end();
+
+	const std::array<vk::SubmitInfo, 1> bufferSubmitInfo{
+		vk::SubmitInfo{ 0, nullptr, nullptr, 1, &commandBuffer, 0,
+		                nullptr, nullptr }
+	};
+	graphicsQueue.submit(bufferSubmitInfo);
+	graphicsQueue.waitIdle();
+}
 } // namespace
 
 VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
@@ -223,36 +292,38 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 
 void VulkanRenderer::createVertexBuffer()
 {
-	constexpr vk::BufferCreateInfo bufferInfo{
-		vk::BufferCreateFlags{},
-		vk::DeviceSize{ sizeof(VertexData) },
-		vk::BufferUsageFlagBits::eVertexBuffer,
-		vk::SharingMode::eExclusive,
-		0,
-		nullptr,
+	const vk::PhysicalDevice physicalDevice{
+		m_Window->physicalDevice()
 	};
 
-	m_VertexBuffer = m_Device.createBuffer(bufferInfo);
-
-	const vk::MemoryRequirements memoryRequirements =
-	    m_Device.getBufferMemoryRequirements(m_VertexBuffer);
-	const vk::MemoryAllocateInfo allocInfo{
-		vk::DeviceSize{ memoryRequirements.size },
-		findMemoryType(vk::PhysicalDevice{ m_Window->physicalDevice() },
-		               vk::MemoryPropertyFlags{
-		                   vk::MemoryPropertyFlagBits::eHostVisible |
-		                   vk::MemoryPropertyFlagBits::eHostCoherent },
-		               memoryRequirements.memoryTypeBits),
-	};
-
-	m_VertexBufferMemory = m_Device.allocateMemory(allocInfo);
-	m_Device.bindBufferMemory(m_VertexBuffer, m_VertexBufferMemory, 0);
+	const auto [stagingBuffer, stagingMemory] = createDeviceBuffer(
+	    sizeof(VertexData),
+	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
+	    vk::MemoryPropertyFlags{
+	        vk::MemoryPropertyFlagBits::eHostVisible |
+	        vk::MemoryPropertyFlagBits::eHostCoherent },
+	    m_Device, physicalDevice);
 
 	void* const devicePtr = m_Device.mapMemory(
-	    m_VertexBufferMemory, 0, bufferInfo.size, vk::MemoryMapFlags{});
+	    stagingMemory, 0, sizeof(VertexData), vk::MemoryMapFlags{});
 	std::memcpy(devicePtr, static_cast<const void*>(&VertexData),
 	            sizeof(VertexData));
-	m_Device.unmapMemory(m_VertexBufferMemory);
+	m_Device.unmapMemory(stagingMemory);
+
+	std::tie(m_VertexBuffer, m_VertexBufferMemory) = createDeviceBuffer(
+	    sizeof(VertexData),
+	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
+	                          vk::BufferUsageFlagBits::eVertexBuffer },
+	    vk::MemoryPropertyFlags{
+	        vk::MemoryPropertyFlagBits::eDeviceLocal },
+	    m_Device, physicalDevice);
+
+	copyBuffer(m_VertexBuffer, stagingBuffer, sizeof(VertexData),
+	           vk::CommandPool{ m_Window->graphicsCommandPool() },
+	           m_Device, vk::Queue{ m_Window->graphicsQueue() });
+
+	m_Device.destroy(stagingBuffer);
+	m_Device.free(stagingMemory);
 }
 
 void VulkanRenderer::initResources()
@@ -446,39 +517,40 @@ void VulkanRenderer::releaseResources()
 
 void VulkanRenderer::startNextFrame()
 {
-	{
-		static std::array<int, 3> activeIndices{ 0, 1, 2 };
-		static float angle{ 0.0f };
-		constexpr float delta =
-		    120.f * std::numbers::pi_v<float> / 180.0f;
+	// TODO: Switched to a staging buffer, this won't work anymore!
+	//{
+	//	static std::array<int, 3> activeIndices{ 0, 1, 2 };
+	//	static float angle{ 0.0f };
+	//	constexpr float delta =
+	//	    120.f * std::numbers::pi_v<float> / 180.0f;
 
-		void* const devicePtr = m_Device.mapMemory(
-		    m_VertexBufferMemory, 0, sizeof(VertexData),
-		    vk::MemoryMapFlags{});
-		auto* const deviceVertices =
-		    reinterpret_cast<std::array<Vertex, 3>*>(devicePtr);
+	//	void* const devicePtr = m_Device.mapMemory(
+	//	    m_VertexBufferMemory, 0, sizeof(VertexData),
+	//	    vk::MemoryMapFlags{});
+	//	auto* const deviceVertices =
+	//	    reinterpret_cast<std::array<Vertex, 3>*>(devicePtr);
 
-		float f{ 0.f };
-		int i{ 0 };
-		for (Vertex& vertex : *deviceVertices)
-		{
-			vertex.m_Position =
-			    QVector2D{ std::cos(angle + f), std::sin(angle + f) };
-			f += delta;
+	//	float f{ 0.f };
+	//	int i{ 0 };
+	//	for (Vertex& vertex : *deviceVertices)
+	//	{
+	//		vertex.m_Position =
+	//		    QVector2D{ std::cos(angle + f), std::sin(angle + f) };
+	//		f += delta;
 
-			int& colorIndex = activeIndices[i];
-			if (vertex.m_Color[colorIndex] == 0.f)
-			{
-				colorIndex = (colorIndex + 1) % 3;
-			}
-			vertex.m_Color[colorIndex] -= 1.f / 64.f;
-			vertex.m_Color[(colorIndex + 1) % 3] += 1.f / 64.f;
-			++i;
-		}
-		m_Device.unmapMemory(m_VertexBufferMemory);
+	//		int& colorIndex = activeIndices[i];
+	//		if (vertex.m_Color[colorIndex] == 0.f)
+	//		{
+	//			colorIndex = (colorIndex + 1) % 3;
+	//		}
+	//		vertex.m_Color[colorIndex] -= 1.f / 64.f;
+	//		vertex.m_Color[(colorIndex + 1) % 3] += 1.f / 64.f;
+	//		++i;
+	//	}
+	//	m_Device.unmapMemory(m_VertexBufferMemory);
 
-		angle += 1.f * std::numbers::pi_v<float> / 180.0f;
-	}
+	//	angle += 1.f * std::numbers::pi_v<float> / 180.0f;
+	//}
 	const QSize size = m_Window->swapChainImageSize();
 	// Window not visible, no need to render anything
 	if (size.height() == 0 && size.width() == 0)
