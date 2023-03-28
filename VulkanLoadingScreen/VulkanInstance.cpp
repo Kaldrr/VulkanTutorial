@@ -88,7 +88,6 @@ VulkanInstance::VulkanInstance()
 			"Failed to find vkGetInstanceProcAddr symbol in vulkan library"
 		};
 	}
-
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
 }
 

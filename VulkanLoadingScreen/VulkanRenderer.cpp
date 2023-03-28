@@ -8,8 +8,21 @@
 #include <filesystem>
 #include <numbers>
 
+// QMatrix4x4 includes a 'flag' which would make copying harder
+
+using MatrixF4 = QGenericMatrix<4, 4, float>;
+
 namespace
 {
+struct UniformBufferObject
+{
+	MatrixF4 m_Model{};
+	MatrixF4 m_View{};
+	MatrixF4 m_Perspective{};
+
+	static_assert(sizeof(MatrixF4) == sizeof(std::array<float, 16>));
+};
+
 struct Vertex
 {
 	QVector2D m_Position{};
@@ -120,7 +133,9 @@ constexpr std::array<std::uint16_t, 6> IndexData{ 0, 1, 2, 2, 3, 0 };
 
 [[nodiscard]] std::tuple<vk::PipelineColorBlendStateCreateInfo,
                          vk::PipelineLayout>
-createPipelineLayoutInfo(const vk::Device& device)
+createPipelineLayoutInfo(
+    const vk::Device& device,
+    const vk::DescriptorSetLayout& descriptorSetLayout)
 {
 	// Band-aid as we need to return address outside of the function...
 	constexpr static vk::PipelineColorBlendAttachmentState
@@ -148,8 +163,12 @@ createPipelineLayoutInfo(const vk::Device& device)
 		    std::array<float, 4>{ 0.f, 0.f, 0.f, 0.f },
 	    };
 
-	constexpr vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo{
-		vk::PipelineLayoutCreateFlags{}, 0u, nullptr, 0u, nullptr,
+	const vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo{
+		vk::PipelineLayoutCreateFlags{},
+		1u,
+		&descriptorSetLayout,
+		0u,
+		nullptr,
 	};
 
 	return { colorBlendCreateInfo,
@@ -371,6 +390,162 @@ void VulkanRenderer::createIndexBuffer()
 	m_Device.free(stagingMemory);
 }
 
+void VulkanRenderer::createDescriptorSetLayout()
+{
+	constexpr vk::DescriptorSetLayoutBinding uboLayoutBinding{
+		0u,
+		vk::DescriptorType::eUniformBuffer,
+		1u,
+		vk::ShaderStageFlags{ vk::ShaderStageFlagBits::eVertex },
+		nullptr,
+	};
+
+	const vk::DescriptorSetLayoutCreateInfo layoutInfo{
+		vk::DescriptorSetLayoutCreateFlags{}, 1u, &uboLayoutBinding,
+		nullptr
+	};
+
+	m_DescriptorSetLayout =
+	    m_Device.createDescriptorSetLayout(layoutInfo);
+}
+
+void VulkanRenderer::createUniformBuffers()
+{
+	constexpr vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+
+	const std::uint32_t frameCount = static_cast<std::uint32_t>(
+	    QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT);
+	const vk::PhysicalDevice physicalDevice{
+		m_Window->physicalDevice()
+	};
+	for (std::uint32_t i{ 0 }; i < frameCount; ++i)
+	{
+		std::tie(m_UniformBuffers[i], m_UniformDeviceMemory[i]) =
+		    createDeviceBuffer(
+		        bufferSize,
+		        vk::BufferUsageFlags{
+		            vk::BufferUsageFlagBits::eUniformBuffer },
+		        vk::MemoryPropertyFlags{
+		            vk::MemoryPropertyFlagBits::eHostVisible |
+		            vk::MemoryPropertyFlagBits::eHostCoherent },
+		        m_Device, physicalDevice);
+
+		// Persistent mapping, we won't be unmapping this
+		m_UniformBuffersMappedMemory[i] = m_Device.mapMemory(
+		    m_UniformDeviceMemory[i], vk::DeviceSize{ 0 }, bufferSize,
+		    vk::MemoryMapFlags{});
+	}
+}
+
+void VulkanRenderer::updateUniformBuffer(const int idx,
+                                         const QSize currentSize)
+{
+	using Clock = std::chrono::steady_clock;
+	using FloatDuration =
+	    std::chrono::duration<float, std::chrono::seconds::period>;
+
+	static Clock::time_point startTime = Clock::now();
+
+	const Clock::time_point currentTime = Clock::now();
+	const float time =
+	    FloatDuration{ currentTime - startTime }.count() * 36.f;
+
+	QMatrix4x4 modelMatrix{};
+	modelMatrix.rotate(time * qDegreesToRadians(90.f),
+	                   QVector3D{ 0.f, 0.f, 1.f });
+
+	QMatrix4x4 viewMatrix{};
+	viewMatrix.lookAt(QVector3D{ 2.f, 2.f, 2.f },
+	                  QVector3D{ 0.f, 0.f, 0.f },
+	                  QVector3D{ 0.f, 0.f, 1.f });
+
+	QMatrix4x4 perspectiveMatrix{};
+	perspectiveMatrix.perspective(
+	    45.f, // This MUST be in degrees, not radians
+	    static_cast<float>(currentSize.width()) /
+	        static_cast<float>(currentSize.height()),
+	    0.1f, 10.f);
+	perspectiveMatrix(1, 1) *= -1.f;
+
+	const UniformBufferObject ubo{
+		// GenericMatrix has same layout as a plain array
+		modelMatrix.toGenericMatrix<4, 4>(),
+		viewMatrix.toGenericMatrix<4, 4>(),
+		perspectiveMatrix.toGenericMatrix<4, 4>()
+	};
+	std::memcpy(m_UniformBuffersMappedMemory[idx], &ubo,
+	            sizeof(UniformBufferObject));
+}
+
+void VulkanRenderer::createDescriptorPool()
+{
+	constexpr std::uint32_t concurrentFrames =
+	    static_cast<std::uint32_t>(
+	        QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT);
+
+	constexpr vk::DescriptorPoolSize poolSize{
+		vk::DescriptorType::eUniformBuffer, concurrentFrames
+	};
+
+	const vk::DescriptorPoolCreateInfo poolInfo{
+		vk::DescriptorPoolCreateFlags{},
+		concurrentFrames,
+		1u,
+		&poolSize,
+		nullptr,
+	};
+
+	m_DescriptorPool = m_Device.createDescriptorPool(poolInfo);
+}
+
+void VulkanRenderer::createDescriptorSets()
+{
+	FrameArray<vk::DescriptorSetLayout> layouts{};
+	layouts.fill(m_DescriptorSetLayout);
+
+	const vk::DescriptorSetAllocateInfo allocInfo{
+		m_DescriptorPool,
+		static_cast<std::uint32_t>(
+		    QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT),
+		layouts.data(),
+		nullptr,
+	};
+
+	const vk::Result result = m_Device.allocateDescriptorSets(
+	    &allocInfo, m_DescriptorSets.data());
+	if (result != vk::Result::eSuccess)
+	{
+		throw std::runtime_error{
+			"Failed to allocate descriptor sets"
+		};
+	}
+
+	for (int i{ 0 }; i < QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT; ++i)
+	{
+		const vk::DescriptorBufferInfo bufferInfo{
+			m_UniformBuffers[i],
+			0,
+			sizeof(UniformBufferObject),
+		};
+
+		const vk::WriteDescriptorSet descriptorWrite{
+			m_DescriptorSets[i],
+			0u,
+			0u,
+			1u,
+			vk::DescriptorType::eUniformBuffer,
+			nullptr,
+			&bufferInfo,
+			nullptr,
+			nullptr,
+		};
+
+		m_Device.updateDescriptorSets(
+		    vk::ArrayProxy{ descriptorWrite },
+		    vk::ArrayProxy<const vk::CopyDescriptorSet>{});
+	}
+}
+
 void VulkanRenderer::initResources()
 {
 	m_Device = vk::Device{ m_Window->device() };
@@ -456,7 +631,7 @@ void VulkanRenderer::initResources()
 		    VK_FALSE,
 		    vk::PolygonMode::eFill,
 		    vk::CullModeFlags{ vk::CullModeFlagBits::eBack },
-		    vk::FrontFace::eClockwise,
+		    vk::FrontFace::eCounterClockwise,
 		    VK_FALSE,
 		    0.f,
 		    0.f,
@@ -468,9 +643,15 @@ void VulkanRenderer::initResources()
 	m_RenderPass =
 	    createRenderPass(m_Device, m_Window->colorFormat(),
 	                     m_Window->depthStencilFormat(), sampleCount);
+
+	createDescriptorSetLayout();
+	createUniformBuffers();
+	createDescriptorPool();
+	createDescriptorSets();
+
 	vk::PipelineColorBlendStateCreateInfo colorBlendCreateInfo{};
 	std::tie(colorBlendCreateInfo, m_PipelineLayout) =
-	    createPipelineLayoutInfo(m_Device);
+	    createPipelineLayoutInfo(m_Device, m_DescriptorSetLayout);
 
 	const vk::GraphicsPipelineCreateInfo pipelineCreateInfo{
 		vk::PipelineCreateFlags{},
@@ -512,8 +693,9 @@ void VulkanRenderer::initSwapChainResources()
 	const QSize size = m_Window->swapChainImageSize();
 	// Window has been minimised, using this size for framebuffer is
 	// illegal
-	// + when window will be visible again it should return to previous
-	// size or at least we will get an event about resizing again :)
+	// + when window will be visible again it should return to
+	// previous size or at least we will get an event about resizing
+	// again :)
 	if (size.height() == 0 || size.width() == 0)
 		return;
 
@@ -557,48 +739,24 @@ void VulkanRenderer::releaseResources()
 	m_Device.destroy(m_GraphicsPipeline);
 	m_Device.destroy(m_PipelineLayout);
 	m_Device.destroy(m_RenderPass);
+
+	for (int i{ 0 }; i < QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT; ++i)
+	{
+		m_Device.destroy(m_UniformBuffers[i]);
+		m_Device.freeMemory(m_UniformDeviceMemory[i]);
+	}
+	m_Device.destroy(m_DescriptorPool);
+	m_Device.destroy(m_DescriptorSetLayout);
+
 	m_Device.destroy(m_IndexBuffer);
 	m_Device.free(m_IndexBufferMemory);
+
 	m_Device.destroy(m_VertexBuffer);
 	m_Device.free(m_VertexBufferMemory);
 }
 
 void VulkanRenderer::startNextFrame()
 {
-	// TODO: Switched to a staging buffer, this won't work anymore!
-	//{
-	//	static std::array<int, 3> activeIndices{ 0, 1, 2 };
-	//	static float angle{ 0.0f };
-	//	constexpr float delta =
-	//	    120.f * std::numbers::pi_v<float> / 180.0f;
-
-	//	void* const devicePtr = m_Device.mapMemory(
-	//	    m_VertexBufferMemory, 0, sizeof(VertexData),
-	//	    vk::MemoryMapFlags{});
-	//	auto* const deviceVertices =
-	//	    reinterpret_cast<std::array<Vertex, 3>*>(devicePtr);
-
-	//	float f{ 0.f };
-	//	int i{ 0 };
-	//	for (Vertex& vertex : *deviceVertices)
-	//	{
-	//		vertex.m_Position =
-	//		    QVector2D{ std::cos(angle + f), std::sin(angle + f) };
-	//		f += delta;
-
-	//		int& colorIndex = activeIndices[i];
-	//		if (vertex.m_Color[colorIndex] == 0.f)
-	//		{
-	//			colorIndex = (colorIndex + 1) % 3;
-	//		}
-	//		vertex.m_Color[colorIndex] -= 1.f / 64.f;
-	//		vertex.m_Color[(colorIndex + 1) % 3] += 1.f / 64.f;
-	//		++i;
-	//	}
-	//	m_Device.unmapMemory(m_VertexBufferMemory);
-
-	//	angle += 1.f * std::numbers::pi_v<float> / 180.0f;
-	//}
 	const QSize size = m_Window->swapChainImageSize();
 	// Window not visible, no need to render anything
 	if (size.height() == 0 && size.width() == 0)
@@ -607,6 +765,8 @@ void VulkanRenderer::startNextFrame()
 	// TODO: Difference between currentFrame and
 	// currentSwapChainImageIndex???
 	const int currentFrame = m_Window->currentSwapChainImageIndex();
+
+	updateUniformBuffer(currentFrame, size);
 
 	const vk::SampleCountFlagBits sampleCount =
 	    static_cast<vk::SampleCountFlagBits>(
@@ -664,6 +824,10 @@ void VulkanRenderer::startNextFrame()
 	commandBuffer.bindVertexBuffers(0, 1, &m_VertexBuffer, &offset);
 	commandBuffer.bindIndexBuffer(m_IndexBuffer, 0,
 	                              vk::IndexType::eUint16);
+	commandBuffer.bindDescriptorSets(
+	    vk::PipelineBindPoint::eGraphics, m_PipelineLayout, 0,
+	    vk::ArrayProxy{ m_DescriptorSets[currentFrame] },
+	    vk::ArrayProxy<const uint32_t>{});
 	commandBuffer.drawIndexed(
 	    static_cast<std::uint32_t>(IndexData.size()), 1, 0, 0, 0);
 

@@ -4,6 +4,7 @@ REQUIRED)
 find_package(Vulkan REQUIRED COMPONENTS glslc)
 find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
 find_package(fmt CONFIG REQUIRED)
+find_package(glm REQUIRED)
 
 qt_standard_project_setup()
 
@@ -30,23 +31,6 @@ qt_add_executable(VulkanLoadingScreen
         ${SHADER_FILES}
 )
 
-source_group(
-    TREE "${CMAKE_CURRENT_SOURCE_DIR}/include/VulkanLoadingScreen/"
-    PREFIX "Header Files"
-    FILES ${HEADER_FILES}
-)
-source_group(
-    TREE "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/"
-    PREFIX "Shader Files"
-    FILES ${SHADER_FILES}
-)
-source_group(
-    TREE "${CMAKE_CURRENT_SOURCE_DIR}/"
-    PREFIX "Source Files"
-    FILES ${SOURCE_FILES}
-)
-
-
 target_link_libraries(VulkanLoadingScreen
 	PRIVATE
 		Qt6::Widgets
@@ -54,6 +38,7 @@ target_link_libraries(VulkanLoadingScreen
         Qt6::3DExtras
         ${VULKAN_LIB_LIST}
         fmt::fmt
+        glm::glm
 )
 
 target_include_directories(VulkanLoadingScreen

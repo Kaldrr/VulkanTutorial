@@ -80,9 +80,10 @@ int main(int argc, char** argv)
 	const int returnCode = [&qtVulkanInstance] {
 		try
 		{
-			MainWindow window;
+			constexpr QSize startingWindowSize{ 800, 800 };
+			MainWindow window{};
 			window.setVulkanInstance(&qtVulkanInstance);
-			window.resize(800, 800);
+			window.resize(startingWindowSize);
 			window.show();
 
 			return QGuiApplication::exec();
