@@ -13,11 +13,13 @@ set(SOURCE_FILES
 	MainWindow.cpp     
     VulkanRenderer.cpp 
     VulkanInstance.cpp 
+    VulkanHelpers.cpp
 )
 set(HEADER_FILES
     include/VulkanLoadingScreen/MainWindow.h
     include/VulkanLoadingScreen/VulkanRenderer.h
     include/VulkanLoadingScreen/VulkanInstance.h
+    include/VulkanLoadingScreen/VulkanHelpers.h
 )
 set(SHADER_FILES
     Shaders/shader.frag
@@ -122,4 +124,25 @@ if (WIN32)
             ${glslc_executable} "--target-env=vulkan1.3"
             "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/shader.frag" "-O" "-o" "Shaders/frag.spv"
     )
+
+    # we don't want to copy if we're building in the source dir
+if (NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
+
+    # list of files for which we add a copy rule
+    set(resource_files "texture.jpg")
+
+    add_custom_command(
+        TARGET VulkanLoadingScreen 
+        PRE_BUILD 
+        COMMAND ${CMAKE_COMMAND} -E make_directory "Textures"
+    )
+    foreach(item IN LISTS resource_files)
+        add_custom_command(
+            TARGET VulkanLoadingScreen PRE_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/Textures/${item}" "${CMAKE_CURRENT_BINARY_DIR}/Textures/${item}"
+            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Textures/${item}"
+        )
+    endforeach()
+endif()
+
 endif(WIN32)

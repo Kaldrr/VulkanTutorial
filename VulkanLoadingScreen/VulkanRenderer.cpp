@@ -1,3 +1,4 @@
+#include <VulkanLoadingScreen/VulkanHelpers.h>
 #include <VulkanLoadingScreen/VulkanRenderer.h>
 
 #include <QFile>
@@ -27,6 +28,7 @@ struct Vertex
 {
 	QVector2D m_Position{};
 	QVector3D m_Color{};
+	QVector2D m_TextureCoordinate{};
 
 	static_assert(sizeof(QVector2D) == sizeof(std::array<float, 2>));
 	static_assert(sizeof(QVector3D) == sizeof(std::array<float, 3>));
@@ -43,10 +45,10 @@ struct Vertex
 		return bindingDescription;
 	}
 
-	constexpr static std::array<vk::VertexInputAttributeDescription, 2>
-	getAttributeDescriptions()
+	static auto getAttributeDescriptions()
 	{
-		constexpr std::array<vk::VertexInputAttributeDescription, 2>
+		constexpr static std::array<vk::VertexInputAttributeDescription,
+		                            3>
 		    attributeDescriptions{
 			    // Position description
 			    vk::VertexInputAttributeDescription{
@@ -62,9 +64,16 @@ struct Vertex
 			        vk::Format::eR32G32B32Sfloat,
 			        offsetof(Vertex, m_Color),
 			    },
+			    // Texture description
+			    vk::VertexInputAttributeDescription{
+			        2,
+			        0,
+			        vk::Format::eR32G32Sfloat,
+			        offsetof(Vertex, m_TextureCoordinate),
+			    },
 		    };
 
-		return attributeDescriptions;
+		return std::span{ attributeDescriptions };
 	}
 };
 
@@ -72,200 +81,26 @@ constexpr std::array<Vertex, 4> VertexData{
 	Vertex{
 	    QVector2D{ -0.5f, -0.5f },
 	    QVector3D{ 1.0f, 1.0f, 1.0f },
+	    QVector2D{ 1.f, 0.f },
 	},
 	Vertex{
 	    QVector2D{ 0.5f, -0.5f },
 	    QVector3D{ 0.0f, 1.0f, 0.0f },
+	    QVector2D{ 0.f, 0.f },
 	},
 	Vertex{
 	    QVector2D{ 0.5f, 0.5f },
 	    QVector3D{ 1.0f, 0.0f, 0.0f },
+	    QVector2D{ 0.f, 1.f },
 	},
 	Vertex{
 	    QVector2D{ -0.5f, 0.5f },
 	    QVector3D{ 0.0f, 0.0f, 1.0f },
+	    QVector2D{ 1.f, 1.f },
 	},
 };
 constexpr std::array<std::uint16_t, 6> IndexData{ 0, 1, 2, 2, 3, 0 };
 
-[[nodiscard]] vk::RenderPass createRenderPass(
-    const vk::Device& device,
-    const VkFormat colorFormat,
-    [[maybe_unused]] const VkFormat depthFormat,
-    const std::uint32_t sampleCount)
-{
-	const vk::AttachmentDescription colorDescription{
-		vk::AttachmentDescriptionFlags{},
-		vk::Format{ colorFormat },
-		static_cast<vk::SampleCountFlagBits>(sampleCount),
-		vk::AttachmentLoadOp::eClear,
-		vk::AttachmentStoreOp::eStore,
-		vk::AttachmentLoadOp::eDontCare,
-		vk::AttachmentStoreOp::eDontCare,
-		vk::ImageLayout::eUndefined,
-		vk::ImageLayout::ePresentSrcKHR,
-	};
-	constexpr vk::AttachmentReference colorAttachmentRef{
-		0u,
-		vk::ImageLayout::eColorAttachmentOptimal,
-	};
-
-	const vk::SubpassDescription subpassDescription{
-		vk::SubpassDescriptionFlags{},
-		vk::PipelineBindPoint::eGraphics,
-		0,
-		nullptr,
-		1u,
-		&colorAttachmentRef,
-		nullptr,
-		nullptr,
-		0,
-		nullptr
-	};
-
-	const vk::RenderPassCreateInfo renderPassInfo{
-		vk::RenderPassCreateFlags{}, 1u, &colorDescription, 1,
-		&subpassDescription,         0,  nullptr,
-	};
-
-	return device.createRenderPass(renderPassInfo);
-}
-
-[[nodiscard]] std::tuple<vk::PipelineColorBlendStateCreateInfo,
-                         vk::PipelineLayout>
-createPipelineLayoutInfo(
-    const vk::Device& device,
-    const vk::DescriptorSetLayout& descriptorSetLayout)
-{
-	// Band-aid as we need to return address outside of the function...
-	constexpr static vk::PipelineColorBlendAttachmentState
-	    colorBlendState{
-		    VK_FALSE,
-		    vk::BlendFactor::eOne,
-		    vk::BlendFactor::eZero,
-		    vk::BlendOp::eAdd,
-		    vk::BlendFactor::eOne,
-		    vk::BlendFactor::eZero,
-		    vk::BlendOp::eAdd,
-		    vk::ColorComponentFlags{ vk::ColorComponentFlagBits::eR |
-		                             vk::ColorComponentFlagBits::eG |
-		                             vk::ColorComponentFlagBits::eB |
-		                             vk::ColorComponentFlagBits::eA },
-	    };
-
-	constexpr vk::PipelineColorBlendStateCreateInfo
-	    colorBlendCreateInfo{
-		    vk::PipelineColorBlendStateCreateFlags{},
-		    VK_FALSE,
-		    vk::LogicOp::eCopy,
-		    1u,
-		    &colorBlendState,
-		    std::array<float, 4>{ 0.f, 0.f, 0.f, 0.f },
-	    };
-
-	const vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo{
-		vk::PipelineLayoutCreateFlags{},
-		1u,
-		&descriptorSetLayout,
-		0u,
-		nullptr,
-	};
-
-	return { colorBlendCreateInfo,
-		     device.createPipelineLayout(pipelineLayoutCreateInfo) };
-}
-
-std::uint32_t findMemoryType(
-    const vk::PhysicalDevice physicalDevice,
-    const vk::MemoryPropertyFlags memoryProperties,
-    const std::uint32_t typeFilter)
-{
-	const vk::PhysicalDeviceMemoryProperties deviceMemoryProperties =
-	    physicalDevice.getMemoryProperties();
-
-	for (std::uint32_t i{ 0u };
-	     i < deviceMemoryProperties.memoryTypeCount; ++i)
-	{
-		if ((typeFilter & (1 << i)) &&
-		    (deviceMemoryProperties.memoryTypes[i].propertyFlags &
-		     memoryProperties) == memoryProperties)
-		{
-			return i;
-		}
-	}
-	throw std::runtime_error{
-		"Failed to find suitable memory for buffer"
-	};
-}
-
-std::tuple<vk::Buffer, vk::DeviceMemory> createDeviceBuffer(
-    const vk::DeviceSize bufferSize,
-    const vk::BufferUsageFlags bufferFlags,
-    const vk::MemoryPropertyFlags memoryFlags,
-    const vk::Device& device,
-    const vk::PhysicalDevice& physicalDevie)
-{
-	const vk::BufferCreateInfo bufferInfo{
-		vk::BufferCreateFlags{},     bufferSize, bufferFlags,
-		vk::SharingMode::eExclusive, 0,          nullptr,
-	};
-
-	vk::Buffer deviceBuffer = device.createBuffer(bufferInfo);
-
-	const vk::MemoryRequirements memoryRequirements =
-	    device.getBufferMemoryRequirements(deviceBuffer);
-
-	const vk::MemoryAllocateInfo allocInfo{
-		vk::DeviceSize{ memoryRequirements.size },
-		findMemoryType(physicalDevie, memoryFlags,
-		               memoryRequirements.memoryTypeBits),
-	};
-	vk::DeviceMemory deviceMemory = device.allocateMemory(allocInfo);
-	device.bindBufferMemory(deviceBuffer, deviceMemory,
-	                        vk::DeviceSize{ 0 });
-
-	return std::tuple{ deviceBuffer, deviceMemory };
-}
-
-void copyBuffer(const vk::Buffer& dstBuffer,
-                const vk::Buffer& srcBuffer,
-                const vk::DeviceSize size,
-                const vk::CommandPool& commandPool,
-                const vk::Device& device,
-                const vk::Queue& graphicsQueue)
-{
-	// Create a command buffer to copy buffers around
-	const vk::CommandBufferAllocateInfo allocInfo{
-		commandPool,
-		vk::CommandBufferLevel::ePrimary,
-		1,
-		nullptr,
-	};
-
-	const std::vector<vk::CommandBuffer> commandBuffers =
-	    device.allocateCommandBuffers(allocInfo);
-	assert(commandBuffers.size() == 1);
-	constexpr vk::CommandBufferBeginInfo beginInfo{
-		vk::CommandBufferUsageFlags{
-		    vk::CommandBufferUsageFlagBits::eOneTimeSubmit },
-		nullptr, nullptr
-	};
-
-	const vk::CommandBuffer& commandBuffer = commandBuffers.at(0);
-	commandBuffer.begin(beginInfo);
-	commandBuffer.copyBuffer(srcBuffer, dstBuffer,
-	                         vk::BufferCopy{ vk::DeviceSize{ 0 },
-	                                         vk::DeviceSize{ 0 },
-	                                         vk::DeviceSize{ size } });
-	commandBuffer.end();
-
-	const std::array<vk::SubmitInfo, 1> bufferSubmitInfo{
-		vk::SubmitInfo{ 0, nullptr, nullptr, 1, &commandBuffer, 0,
-		                nullptr, nullptr }
-	};
-	graphicsQueue.submit(bufferSubmitInfo);
-	graphicsQueue.waitIdle();
-}
 } // namespace
 
 VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
@@ -318,17 +153,13 @@ void VulkanRenderer::createVertexBuffer()
 {
 	constexpr vk::DeviceSize memorySize{ sizeof(VertexData) };
 
-	const vk::PhysicalDevice physicalDevice{
-		m_Window->physicalDevice()
-	};
-
 	const auto [stagingBuffer, stagingMemory] = createDeviceBuffer(
 	    memorySize,
 	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
 	    vk::MemoryPropertyFlags{
 	        vk::MemoryPropertyFlagBits::eHostVisible |
 	        vk::MemoryPropertyFlagBits::eHostCoherent },
-	    m_Device, physicalDevice);
+	    m_Device, m_PhysicalDevice);
 
 	void* const devicePtr = m_Device.mapMemory(
 	    stagingMemory, 0, memorySize, vk::MemoryMapFlags{});
@@ -342,7 +173,7 @@ void VulkanRenderer::createVertexBuffer()
 	                          vk::BufferUsageFlagBits::eVertexBuffer },
 	    vk::MemoryPropertyFlags{
 	        vk::MemoryPropertyFlagBits::eDeviceLocal },
-	    m_Device, physicalDevice);
+	    m_Device, m_PhysicalDevice);
 
 	copyBuffer(m_VertexBuffer, stagingBuffer, memorySize,
 	           vk::CommandPool{ m_Window->graphicsCommandPool() },
@@ -356,17 +187,13 @@ void VulkanRenderer::createIndexBuffer()
 {
 	constexpr vk::DeviceSize memorySize{ sizeof(IndexData) };
 
-	const vk::PhysicalDevice physicalDevice{
-		m_Window->physicalDevice()
-	};
-
 	const auto [stagingBuffer, stagingMemory] = createDeviceBuffer(
 	    memorySize,
 	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
 	    vk::MemoryPropertyFlags{
 	        vk::MemoryPropertyFlagBits::eHostVisible |
 	        vk::MemoryPropertyFlagBits::eHostCoherent },
-	    m_Device, physicalDevice);
+	    m_Device, m_PhysicalDevice);
 
 	void* const devicePtr = m_Device.mapMemory(
 	    stagingMemory, 0, memorySize, vk::MemoryMapFlags{});
@@ -380,7 +207,7 @@ void VulkanRenderer::createIndexBuffer()
 	                          vk::BufferUsageFlagBits::eIndexBuffer },
 	    vk::MemoryPropertyFlags{
 	        vk::MemoryPropertyFlagBits::eDeviceLocal },
-	    m_Device, physicalDevice);
+	    m_Device, m_PhysicalDevice);
 
 	copyBuffer(m_IndexBuffer, stagingBuffer, memorySize,
 	           vk::CommandPool{ m_Window->graphicsCommandPool() },
@@ -392,16 +219,29 @@ void VulkanRenderer::createIndexBuffer()
 
 void VulkanRenderer::createDescriptorSetLayout()
 {
-	constexpr vk::DescriptorSetLayoutBinding uboLayoutBinding{
-		0u,
-		vk::DescriptorType::eUniformBuffer,
-		1u,
-		vk::ShaderStageFlags{ vk::ShaderStageFlagBits::eVertex },
-		nullptr,
-	};
-
+	constexpr std::array<vk::DescriptorSetLayoutBinding, 2>
+	    descriptorSetLayouts{
+		    // UniformBufferObject layout
+		    vk::DescriptorSetLayoutBinding{
+		        0u,
+		        vk::DescriptorType::eUniformBuffer,
+		        1u,
+		        vk::ShaderStageFlags{
+		            vk::ShaderStageFlagBits::eVertex },
+		        nullptr,
+		    },
+		    // Texture image sampler layout
+		    vk::DescriptorSetLayoutBinding{
+		        1u, vk::DescriptorType::eCombinedImageSampler, 1u,
+		        vk::ShaderStageFlags{
+		            vk::ShaderStageFlagBits::eFragment },
+		        nullptr }
+	    };
 	const vk::DescriptorSetLayoutCreateInfo layoutInfo{
-		vk::DescriptorSetLayoutCreateFlags{}, 1u, &uboLayoutBinding,
+		vk::DescriptorSetLayoutCreateFlags{},
+		vk::ArrayProxyNoTemporaries<
+		    const vk::DescriptorSetLayoutBinding>{
+		    descriptorSetLayouts },
 		nullptr
 	};
 
@@ -415,9 +255,7 @@ void VulkanRenderer::createUniformBuffers()
 
 	const std::uint32_t frameCount = static_cast<std::uint32_t>(
 	    QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT);
-	const vk::PhysicalDevice physicalDevice{
-		m_Window->physicalDevice()
-	};
+
 	for (std::uint32_t i{ 0 }; i < frameCount; ++i)
 	{
 		std::tie(m_UniformBuffers[i], m_UniformDeviceMemory[i]) =
@@ -428,7 +266,7 @@ void VulkanRenderer::createUniformBuffers()
 		        vk::MemoryPropertyFlags{
 		            vk::MemoryPropertyFlagBits::eHostVisible |
 		            vk::MemoryPropertyFlagBits::eHostCoherent },
-		        m_Device, physicalDevice);
+		        m_Device, m_PhysicalDevice);
 
 		// Persistent mapping, we won't be unmapping this
 		m_UniformBuffersMappedMemory[i] = m_Device.mapMemory(
@@ -483,15 +321,19 @@ void VulkanRenderer::createDescriptorPool()
 	    static_cast<std::uint32_t>(
 	        QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT);
 
-	constexpr vk::DescriptorPoolSize poolSize{
-		vk::DescriptorType::eUniformBuffer, concurrentFrames
+	constexpr std::array<vk::DescriptorPoolSize, 2> poolSizes{
+		// Uniform buffer size
+		vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer,
+		                        concurrentFrames },
+		// Texture image sampler size
+		vk::DescriptorPoolSize{
+		    vk::DescriptorType::eCombinedImageSampler,
+		    concurrentFrames }
 	};
-
 	const vk::DescriptorPoolCreateInfo poolInfo{
 		vk::DescriptorPoolCreateFlags{},
 		concurrentFrames,
-		1u,
-		&poolSize,
+		poolSizes,
 		nullptr,
 	};
 
@@ -528,28 +370,173 @@ void VulkanRenderer::createDescriptorSets()
 			sizeof(UniformBufferObject),
 		};
 
-		const vk::WriteDescriptorSet descriptorWrite{
-			m_DescriptorSets[i],
-			0u,
-			0u,
-			1u,
-			vk::DescriptorType::eUniformBuffer,
-			nullptr,
-			&bufferInfo,
-			nullptr,
-			nullptr,
+		const vk::DescriptorImageInfo imageInfo{
+			m_TextureSampler, m_TextureImageView,
+			vk::ImageLayout::eShaderReadOnlyOptimal
+		};
+
+		const std::array<vk::WriteDescriptorSet, 2> descriptorWrites{
+			// UniformBufferObject write
+			vk::WriteDescriptorSet{ m_DescriptorSets[i], 0u, 0u, 1u,
+			                        vk::DescriptorType::eUniformBuffer,
+			                        nullptr, &bufferInfo, nullptr,
+			                        nullptr },
+			// Texture image sampler write
+			vk::WriteDescriptorSet{
+			    m_DescriptorSets[i], 1u, 0u, 1u,
+			    vk::DescriptorType::eCombinedImageSampler, &imageInfo,
+			    nullptr, nullptr },
 		};
 
 		m_Device.updateDescriptorSets(
-		    vk::ArrayProxy{ descriptorWrite },
+		    vk::ArrayProxy<const vk::WriteDescriptorSet>{
+		        descriptorWrites },
 		    vk::ArrayProxy<const vk::CopyDescriptorSet>{});
 	}
 }
 
+void VulkanRenderer::loadTextures()
+{
+	// TODO: extract into helper function
+	QImage textureImage{ "./Textures/texture.jpg" };
+	assert(textureImage.isNull() == false);
+	textureImage.convertTo(QImage::Format::Format_RGBA8888);
+
+	const vk::DeviceSize textureSize =
+	    static_cast<vk::DeviceSize>(textureImage.sizeInBytes());
+
+	const auto [deviceBuffer, deviceBufferMemory] = createDeviceBuffer(
+	    textureSize,
+	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
+	    vk::MemoryPropertyFlags{
+	        vk::MemoryPropertyFlagBits::eHostVisible |
+	        vk::MemoryPropertyFlagBits::eHostCoherent },
+	    m_Device, m_PhysicalDevice);
+
+	void* const memoryPtr =
+	    m_Device.mapMemory(deviceBufferMemory, vk::DeviceSize{ 0 },
+	                       textureSize, vk::MemoryMapFlags{});
+	std::memcpy(memoryPtr,
+	            reinterpret_cast<const void*>(textureImage.constBits()),
+	            textureSize);
+	m_Device.unmapMemory(deviceBufferMemory);
+
+	const vk::ImageCreateInfo imageCreateInfo{
+		vk::ImageCreateFlags{},
+		vk::ImageType::e2D,
+		vk::Format::eR8G8B8A8Srgb,
+		vk::Extent3D{ static_cast<std::uint32_t>(textureImage.width()),
+		              static_cast<std::uint32_t>(textureImage.height()),
+		              1u },
+		1u,
+		1u,
+		vk::SampleCountFlagBits::e1,
+		vk::ImageTiling::eOptimal,
+		vk::ImageUsageFlags{ vk::ImageUsageFlagBits::eTransferDst |
+		                     vk::ImageUsageFlagBits::eSampled },
+		vk::SharingMode::eExclusive,
+		0u,
+		nullptr,
+		vk::ImageLayout::eUndefined,
+		nullptr
+	};
+
+	m_TextureImage = m_Device.createImage(imageCreateInfo);
+
+	const vk::MemoryRequirements imageRequirements =
+	    m_Device.getImageMemoryRequirements(m_TextureImage);
+	const vk::MemoryAllocateInfo textureAllocationInfo{
+		imageRequirements.size,
+		findMemoryType(m_PhysicalDevice,
+		               vk::MemoryPropertyFlags{
+		                   vk::MemoryPropertyFlagBits::eDeviceLocal },
+		               imageRequirements.memoryTypeBits),
+		nullptr
+	};
+	m_TextureImageMemory =
+	    m_Device.allocateMemory(textureAllocationInfo);
+	m_Device.bindImageMemory(m_TextureImage, m_TextureImageMemory,
+	                         vk::DeviceSize{ 0 });
+
+	const vk::CommandPool commandPool{
+		m_Window->graphicsCommandPool()
+	};
+	const vk::Queue queue{ m_Window->graphicsQueue() };
+
+	transitionImageLayout(m_TextureImage, vk::Format::eR8G8B8A8Srgb,
+	                      vk::ImageLayout::eUndefined,
+	                      vk::ImageLayout::eTransferDstOptimal,
+	                      m_Device, commandPool, queue);
+	copyBufferToImage(deviceBuffer, m_TextureImage,
+	                  static_cast<std::uint32_t>(textureImage.width()),
+	                  static_cast<std::uint32_t>(textureImage.height()),
+	                  m_Device, commandPool, queue);
+	transitionImageLayout(m_TextureImage, vk::Format::eR8G8B8A8Srgb,
+	                      vk::ImageLayout::eTransferDstOptimal,
+	                      vk::ImageLayout::eShaderReadOnlyOptimal,
+	                      m_Device, commandPool, queue);
+
+	m_Device.destroy(deviceBuffer);
+	m_Device.free(deviceBufferMemory);
+}
+
+void VulkanRenderer::createTextureImageView()
+{
+	const vk::ImageViewCreateInfo viewInfo{
+		vk::ImageViewCreateFlags{},
+		m_TextureImage,
+		vk::ImageViewType::e2D,
+		vk::Format::eR8G8B8A8Srgb,
+		vk::ComponentMapping{ vk::ComponentSwizzle::eIdentity,
+		                      vk::ComponentSwizzle::eIdentity,
+		                      vk::ComponentSwizzle::eIdentity,
+		                      vk::ComponentSwizzle::eIdentity },
+		vk::ImageSubresourceRange{
+		    vk::ImageAspectFlags{ vk::ImageAspectFlagBits::eColor }, 0u,
+		    1u, 0u, 1u },
+		nullptr
+	};
+
+	m_TextureImageView = m_Device.createImageView(viewInfo);
+}
+
+void VulkanRenderer::createTextureSampler()
+{
+	const vk::PhysicalDeviceProperties deviceProperties{
+		*m_Window->physicalDeviceProperties()
+	};
+
+	const vk::SamplerCreateInfo samplerInfo{
+		vk::SamplerCreateFlags{},
+		vk::Filter::eLinear,
+		vk::Filter::eLinear,
+		vk::SamplerMipmapMode::eLinear,
+		vk::SamplerAddressMode::eRepeat,
+		vk::SamplerAddressMode::eRepeat,
+		vk::SamplerAddressMode::eRepeat,
+		0.f,
+		VK_TRUE,
+		deviceProperties.limits.maxSamplerAnisotropy,
+		VK_FALSE,
+		vk::CompareOp::eAlways,
+		0.f,
+		0.f,
+		vk::BorderColor::eIntOpaqueBlack,
+		VK_FALSE,
+		nullptr
+	};
+
+	m_TextureSampler = m_Device.createSampler(samplerInfo);
+}
+
 void VulkanRenderer::initResources()
 {
-	m_Device = vk::Device{ m_Window->device() };
+	m_Device         = vk::Device{ m_Window->device() };
+	m_PhysicalDevice = vk::PhysicalDevice{ m_Window->physicalDevice() };
 
+	loadTextures();
+	createTextureImageView();
+	createTextureSampler();
 	createVertexBuffer();
 	createIndexBuffer();
 
@@ -590,8 +577,8 @@ void VulkanRenderer::initResources()
 
 	constexpr vk::VertexInputBindingDescription
 	    vertexBindingDescription = Vertex::getBindingDescription();
-	constexpr std::array<vk::VertexInputAttributeDescription, 2>
-	    vertexAttributeDescription = Vertex::getAttributeDescriptions();
+	const std::span vertexAttributeDescription =
+	    Vertex::getAttributeDescriptions();
 
 	const vk::PipelineVertexInputStateCreateInfo
 	    pipelineVertexInputInfo{
@@ -696,7 +683,7 @@ void VulkanRenderer::initSwapChainResources()
 	// + when window will be visible again it should return to
 	// previous size or at least we will get an event about resizing
 	// again :)
-	if (size.height() == 0 || size.width() == 0)
+	if (size.height() < 5 || size.width() < 5)
 		return;
 
 	const int swapChainImageCount = m_Window->swapChainImageCount();
@@ -753,15 +740,27 @@ void VulkanRenderer::releaseResources()
 
 	m_Device.destroy(m_VertexBuffer);
 	m_Device.free(m_VertexBufferMemory);
+
+	m_Device.destroy(m_TextureSampler);
+	m_Device.destroy(m_TextureImageView);
+	m_Device.destroy(m_TextureImage);
+	m_Device.free(m_TextureImageMemory);
+
+	m_PhysicalDevice = vk::PhysicalDevice{};
+	m_Device         = vk::Device{};
 }
 
 void VulkanRenderer::startNextFrame()
 {
 	const QSize size = m_Window->swapChainImageSize();
 	// Window not visible, no need to render anything
-	if (size.height() == 0 && size.width() == 0)
+	if (size.height() < 5 || size.width() < 5)
+	{
+		// Tell window we're ready, otherwise we will hang here...
+		m_Window->frameReady();
+		m_Window->requestUpdate();
 		return;
-
+	}
 	// TODO: Difference between currentFrame and
 	// currentSwapChainImageIndex???
 	const int currentFrame = m_Window->currentSwapChainImageIndex();

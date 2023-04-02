@@ -66,7 +66,7 @@ QueueFamilyIndices findQueueFamilies(
 
 } // namespace
 
-;
+
 
 VulkanInstance::VulkanInstance()
 {

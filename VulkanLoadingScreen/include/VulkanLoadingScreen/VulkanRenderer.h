@@ -26,6 +26,9 @@ private:
 	void updateUniformBuffer(int idx, QSize currentSize);
 	void createDescriptorPool();
 	void createDescriptorSets();
+	void loadTextures();
+	void createTextureImageView();
+	void createTextureSampler();
 
 private:
 	template <typename T>
@@ -36,6 +39,7 @@ private:
 	// QVulkanDeviceFunctions* m_DeviceFunctions{ nullptr };
 
 	vk::Device m_Device{};
+	vk::PhysicalDevice m_PhysicalDevice{};
 	vk::RenderPass m_RenderPass{};
 	vk::PipelineLayout m_PipelineLayout{};
 	vk::Pipeline m_GraphicsPipeline{};
@@ -54,4 +58,9 @@ private:
 
 	vk::DescriptorPool m_DescriptorPool{};
 	FrameArray<vk::DescriptorSet> m_DescriptorSets{};
+
+	vk::Image m_TextureImage{};
+	vk::DeviceMemory m_TextureImageMemory{};
+	vk::ImageView m_TextureImageView{};
+	vk::Sampler m_TextureSampler{};
 };
