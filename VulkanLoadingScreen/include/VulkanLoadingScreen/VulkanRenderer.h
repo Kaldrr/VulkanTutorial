@@ -10,6 +10,11 @@ class VulkanRenderer : public QVulkanWindowRenderer
 {
 public:
 	explicit VulkanRenderer(QVulkanWindow* window, bool msaa = false);
+	VulkanRenderer(const VulkanRenderer&)                = delete;
+	VulkanRenderer(VulkanRenderer&&) noexcept            = delete;
+	VulkanRenderer& operator=(const VulkanRenderer&)     = delete;
+	VulkanRenderer& operator=(VulkanRenderer&&) noexcept = delete;
+	~VulkanRenderer() noexcept                           = default;
 
 	void initResources() override;
 	void initSwapChainResources() override;
@@ -35,8 +40,11 @@ private:
 	using FrameArray =
 	    std::array<T, QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT>;
 
-	QVulkanWindow* m_Window{ nullptr };
-	// QVulkanDeviceFunctions* m_DeviceFunctions{ nullptr };
+	QVulkanWindow* const m_Window{ nullptr };
+	// The value is constant for the entire lifetime of the
+	// QVulkanWindow, So we can make it const
+	const std::uint32_t m_ConcurrentFrameCount{};
+	std::uint32_t m_SwapChainImageCount{};
 
 	vk::Device m_Device{};
 	vk::PhysicalDevice m_PhysicalDevice{};

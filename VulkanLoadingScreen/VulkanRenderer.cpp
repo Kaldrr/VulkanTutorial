@@ -106,6 +106,8 @@ constexpr std::array<std::uint16_t, 6> IndexData{ 0, 1, 2, 2, 3, 0 };
 VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
                                const bool msaa)
     : m_Window{ window }
+    , m_ConcurrentFrameCount{ static_cast<std::uint32_t>(
+	      m_Window->concurrentFrameCount()) }
 {
 	if (msaa)
 	{
@@ -145,7 +147,6 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 		reinterpret_cast<const std::uint32_t*>(blob.constData()),
 	};
 
-	// No result?
 	return m_Device.createShaderModule(shaderInfo);
 }
 
@@ -253,10 +254,7 @@ void VulkanRenderer::createUniformBuffers()
 {
 	constexpr vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
 
-	const std::uint32_t frameCount = static_cast<std::uint32_t>(
-	    QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT);
-
-	for (std::uint32_t i{ 0 }; i < frameCount; ++i)
+	for (std::uint32_t i{ 0 }; i < m_ConcurrentFrameCount; ++i)
 	{
 		std::tie(m_UniformBuffers[i], m_UniformDeviceMemory[i]) =
 		    createDeviceBuffer(
@@ -317,22 +315,18 @@ void VulkanRenderer::updateUniformBuffer(const int idx,
 
 void VulkanRenderer::createDescriptorPool()
 {
-	constexpr std::uint32_t concurrentFrames =
-	    static_cast<std::uint32_t>(
-	        QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT);
-
-	constexpr std::array<vk::DescriptorPoolSize, 2> poolSizes{
+	const std::array<vk::DescriptorPoolSize, 2> poolSizes{
 		// Uniform buffer size
 		vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer,
-		                        concurrentFrames },
+		                        m_ConcurrentFrameCount },
 		// Texture image sampler size
 		vk::DescriptorPoolSize{
 		    vk::DescriptorType::eCombinedImageSampler,
-		    concurrentFrames }
+		    m_ConcurrentFrameCount }
 	};
 	const vk::DescriptorPoolCreateInfo poolInfo{
 		vk::DescriptorPoolCreateFlags{},
-		concurrentFrames,
+		m_ConcurrentFrameCount,
 		poolSizes,
 		nullptr,
 	};
@@ -347,8 +341,7 @@ void VulkanRenderer::createDescriptorSets()
 
 	const vk::DescriptorSetAllocateInfo allocInfo{
 		m_DescriptorPool,
-		static_cast<std::uint32_t>(
-		    QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT),
+		m_ConcurrentFrameCount,
 		layouts.data(),
 		nullptr,
 	};
@@ -362,12 +355,10 @@ void VulkanRenderer::createDescriptorSets()
 		};
 	}
 
-	for (int i{ 0 }; i < QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT; ++i)
+	for (std::uint32_t i{ 0u }; i < m_ConcurrentFrameCount; ++i)
 	{
 		const vk::DescriptorBufferInfo bufferInfo{
-			m_UniformBuffers[i],
-			0,
-			sizeof(UniformBufferObject),
+			m_UniformBuffers[i], 0, sizeof(UniformBufferObject)
 		};
 
 		const vk::DescriptorImageInfo imageInfo{
@@ -405,21 +396,23 @@ void VulkanRenderer::loadTextures()
 	const vk::DeviceSize textureSize =
 	    static_cast<vk::DeviceSize>(textureImage.sizeInBytes());
 
-	const auto [deviceBuffer, deviceBufferMemory] = createDeviceBuffer(
-	    textureSize,
-	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
-	    vk::MemoryPropertyFlags{
-	        vk::MemoryPropertyFlagBits::eHostVisible |
-	        vk::MemoryPropertyFlagBits::eHostCoherent },
-	    m_Device, m_PhysicalDevice);
+	const auto [stagingBuffer, stagingBufferMemory] =
+	    createDeviceBuffer(
+	        textureSize,
+	        vk::BufferUsageFlags{
+	            vk::BufferUsageFlagBits::eTransferSrc },
+	        vk::MemoryPropertyFlags{
+	            vk::MemoryPropertyFlagBits::eHostVisible |
+	            vk::MemoryPropertyFlagBits::eHostCoherent },
+	        m_Device, m_PhysicalDevice);
 
 	void* const memoryPtr =
-	    m_Device.mapMemory(deviceBufferMemory, vk::DeviceSize{ 0 },
+	    m_Device.mapMemory(stagingBufferMemory, vk::DeviceSize{ 0 },
 	                       textureSize, vk::MemoryMapFlags{});
 	std::memcpy(memoryPtr,
 	            reinterpret_cast<const void*>(textureImage.constBits()),
 	            textureSize);
-	m_Device.unmapMemory(deviceBufferMemory);
+	m_Device.unmapMemory(stagingBufferMemory);
 
 	const vk::ImageCreateInfo imageCreateInfo{
 		vk::ImageCreateFlags{},
@@ -467,7 +460,7 @@ void VulkanRenderer::loadTextures()
 	                      vk::ImageLayout::eUndefined,
 	                      vk::ImageLayout::eTransferDstOptimal,
 	                      m_Device, commandPool, queue);
-	copyBufferToImage(deviceBuffer, m_TextureImage,
+	copyBufferToImage(stagingBuffer, m_TextureImage,
 	                  static_cast<std::uint32_t>(textureImage.width()),
 	                  static_cast<std::uint32_t>(textureImage.height()),
 	                  m_Device, commandPool, queue);
@@ -476,8 +469,8 @@ void VulkanRenderer::loadTextures()
 	                      vk::ImageLayout::eShaderReadOnlyOptimal,
 	                      m_Device, commandPool, queue);
 
-	m_Device.destroy(deviceBuffer);
-	m_Device.free(deviceBufferMemory);
+	m_Device.destroy(stagingBuffer);
+	m_Device.free(stagingBufferMemory);
 }
 
 void VulkanRenderer::createTextureImageView()
@@ -678,6 +671,9 @@ void VulkanRenderer::initResources()
 void VulkanRenderer::initSwapChainResources()
 {
 	const QSize size = m_Window->swapChainImageSize();
+
+	m_SwapChainImageCount =
+	    static_cast<std::uint32_t>(m_Window->swapChainImageCount());
 	// Window has been minimised, using this size for framebuffer is
 	// illegal
 	// + when window will be visible again it should return to
@@ -686,13 +682,11 @@ void VulkanRenderer::initSwapChainResources()
 	if (size.height() < 5 || size.width() < 5)
 		return;
 
-	const int swapChainImageCount = m_Window->swapChainImageCount();
-
 	fmt::print(
 	    "Creating SwapChainResources for size [{}x{}] and {} images\n",
-	    size.width(), size.height(), swapChainImageCount);
+	    size.width(), size.height(), m_SwapChainImageCount);
 
-	for (int i{ 0 }; i < swapChainImageCount; ++i)
+	for (std::uint32_t i{ 0u }; i < m_SwapChainImageCount; ++i)
 	{
 		const vk::ImageView swapChainImage{
 			m_Window->swapChainImageView(i)
@@ -714,8 +708,7 @@ void VulkanRenderer::initSwapChainResources()
 
 void VulkanRenderer::releaseSwapChainResources()
 {
-	const int swapChainImageCount = m_Window->swapChainImageCount();
-	for (int i{ 0 }; i < swapChainImageCount; ++i)
+	for (std::uint32_t i{ 0u }; i < m_SwapChainImageCount; ++i)
 	{
 		m_Device.destroy(m_Framebuffers[i]);
 	}
@@ -727,7 +720,7 @@ void VulkanRenderer::releaseResources()
 	m_Device.destroy(m_PipelineLayout);
 	m_Device.destroy(m_RenderPass);
 
-	for (int i{ 0 }; i < QVulkanWindow::MAX_CONCURRENT_FRAME_COUNT; ++i)
+	for (std::uint32_t i{ 0u }; i < m_ConcurrentFrameCount; ++i)
 	{
 		m_Device.destroy(m_UniformBuffers[i]);
 		m_Device.freeMemory(m_UniformDeviceMemory[i]);
@@ -761,9 +754,10 @@ void VulkanRenderer::startNextFrame()
 		m_Window->requestUpdate();
 		return;
 	}
-	// TODO: Difference between currentFrame and
-	// currentSwapChainImageIndex???
-	const int currentFrame = m_Window->currentSwapChainImageIndex();
+	// CurrentFrame for buffers
+	// CurrentImageIdx for everything else
+	const int currentFrame    = m_Window->currentFrame();
+	const int currentImageIdx = m_Window->currentSwapChainImageIndex();
 
 	updateUniformBuffer(currentFrame, size);
 
@@ -785,7 +779,7 @@ void VulkanRenderer::startNextFrame()
 
 	const vk::RenderPassBeginInfo renderPassInfo{
 		m_RenderPass,
-		m_Framebuffers[currentFrame],
+		m_Framebuffers[currentImageIdx],
 		vk::Rect2D{
 		    vk::Offset2D{ 0, 0 },
 		    vk::Extent2D{ static_cast<std::uint32_t>(size.width()),
@@ -816,11 +810,12 @@ void VulkanRenderer::startNextFrame()
 		vk::Extent2D{ static_cast<std::uint32_t>(size.width()),
 		              static_cast<std::uint32_t>(size.height()) },
 	};
-	commandBuffer.setViewport(0u, 1u, &viewport);
-	commandBuffer.setScissor(0u, 1u, &scissor);
+	commandBuffer.setViewport(0u, vk::ArrayProxy{ viewport });
+	commandBuffer.setScissor(0u, vk::ArrayProxy{ scissor });
 
 	constexpr vk::DeviceSize offset{ 0 };
-	commandBuffer.bindVertexBuffers(0, 1, &m_VertexBuffer, &offset);
+	commandBuffer.bindVertexBuffers(0, vk::ArrayProxy{ m_VertexBuffer },
+	                                vk::ArrayProxy{ offset });
 	commandBuffer.bindIndexBuffer(m_IndexBuffer, 0,
 	                              vk::IndexType::eUint16);
 	commandBuffer.bindDescriptorSets(

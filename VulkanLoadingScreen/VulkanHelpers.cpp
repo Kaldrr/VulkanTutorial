@@ -237,8 +237,8 @@ void transitionImageLayout(const vk::Image& image,
 	    beginSingleTimeCommands(device, commandPool);
 
 	vk::ImageMemoryBarrier barrier{
-		vk::AccessFlags{}, // TODO
-		vk::AccessFlags{}, // TODO
+		vk::AccessFlags{},
+		vk::AccessFlags{},
 		oldLayout,
 		newLayout,
 		VK_QUEUE_FAMILY_IGNORED,

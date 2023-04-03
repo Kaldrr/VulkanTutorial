@@ -85,6 +85,7 @@ int main(int argc, char** argv)
 			window.setVulkanInstance(&qtVulkanInstance);
 			window.resize(startingWindowSize);
 			window.show();
+			window.setVisibility(QWindow::Visibility::Windowed);
 
 			return QGuiApplication::exec();
 		}
