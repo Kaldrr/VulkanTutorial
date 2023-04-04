@@ -91,7 +91,7 @@ install(TARGETS VulkanLoadingScreen
 qt_finalize_executable(VulkanLoadingScreen)
 
 add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
-  COMMAND ${CMAKE_COMMAND} $<$<CXX_COMPILER_ID:MSVC>:-E> copy $<TARGET_RUNTIME_DLLS:VulkanApp> $<TARGET_FILE_DIR:VulkanApp>
+  COMMAND ${CMAKE_COMMAND} $<$<CXX_COMPILER_ID:MSVC>:-E> copy $<TARGET_RUNTIME_DLLS:VulkanLoadingScreen> $<TARGET_FILE_DIR:VulkanLoadingScreen>
   COMMAND_EXPAND_LISTS
 )
 

@@ -48,5 +48,4 @@ if (MSVC)
   set(WERROR_FLAG /WX)
 endif ()
 
-add_subdirectory(QVulkanApp)
 add_subdirectory(VulkanLoadingScreen)
