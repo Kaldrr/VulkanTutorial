@@ -34,7 +34,7 @@ private:
 	void loadTextures();
 	void createTextureImageView();
 	void createTextureSampler();
-
+	
 private:
 	template <typename T>
 	using FrameArray =
@@ -71,4 +71,8 @@ private:
 	vk::DeviceMemory m_TextureImageMemory{};
 	vk::ImageView m_TextureImageView{};
 	vk::Sampler m_TextureSampler{};
+
+	vk::Image m_DepthImage{};
+	vk::DeviceMemory m_DepthImageMemory{};
+	vk::ImageView m_DepthImageView{};
 };

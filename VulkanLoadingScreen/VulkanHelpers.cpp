@@ -3,23 +3,41 @@
 [[nodiscard]] vk::RenderPass createRenderPass(
     const vk::Device& device,
     const VkFormat colorFormat,
-    [[maybe_unused]] const VkFormat depthFormat,
+    const VkFormat depthFormat,
     const std::uint32_t sampleCount)
 {
-	const vk::AttachmentDescription colorDescription{
-		vk::AttachmentDescriptionFlags{},
-		vk::Format{ colorFormat },
-		static_cast<vk::SampleCountFlagBits>(sampleCount),
-		vk::AttachmentLoadOp::eClear,
-		vk::AttachmentStoreOp::eStore,
-		vk::AttachmentLoadOp::eDontCare,
-		vk::AttachmentStoreOp::eDontCare,
-		vk::ImageLayout::eUndefined,
-		vk::ImageLayout::ePresentSrcKHR,
+	const std::array<vk::AttachmentDescription, 2> attachments{
+		// Color attachment
+		vk::AttachmentDescription{
+		    vk::AttachmentDescriptionFlags{},
+		    vk::Format{ colorFormat },
+		    static_cast<vk::SampleCountFlagBits>(sampleCount),
+		    vk::AttachmentLoadOp::eClear,
+		    vk::AttachmentStoreOp::eStore,
+		    vk::AttachmentLoadOp::eDontCare,
+		    vk::AttachmentStoreOp::eDontCare,
+		    vk::ImageLayout::eUndefined,
+		    vk::ImageLayout::ePresentSrcKHR,
+		},
+		// Depth stencil attachment
+		vk::AttachmentDescription{
+		    vk::AttachmentDescriptionFlags{},
+		    vk::Format{ depthFormat },
+		    vk::SampleCountFlagBits::e1,
+		    vk::AttachmentLoadOp::eClear,
+		    vk::AttachmentStoreOp::eDontCare,
+		    vk::AttachmentLoadOp::eDontCare,
+		    vk::AttachmentStoreOp::eDontCare,
+		    vk::ImageLayout::eUndefined,
+		    vk::ImageLayout::eDepthStencilAttachmentOptimal,
+		}
 	};
+
 	constexpr vk::AttachmentReference colorAttachmentRef{
-		0u,
-		vk::ImageLayout::eColorAttachmentOptimal,
+		0u, vk::ImageLayout::eColorAttachmentOptimal
+	};
+	constexpr vk::AttachmentReference depthAttachmentRef{
+		1u, vk::ImageLayout::eDepthStencilAttachmentOptimal
 	};
 
 	const vk::SubpassDescription subpassDescription{
@@ -30,14 +48,44 @@
 		1u,
 		&colorAttachmentRef,
 		nullptr,
-		nullptr,
+		&depthAttachmentRef,
 		0,
 		nullptr
 	};
 
+	/*
+	uint32_t                                 srcSubpass_      = {}
+	uint32_t                                 dstSubpass_      = {}
+	::PipelineStageFlags srcStageMask_    = {}
+	::PipelineStageFlags dstStageMask_    = {}
+	::AccessFlags        srcAccessMask_   = {}
+	::AccessFlags        dstAccessMask_   = {}
+	::DependencyFlags    dependencyFlags_ = {}
+	*/
+	constexpr vk::SubpassDependency dependency{
+		VK_SUBPASS_EXTERNAL,
+		0u,
+		vk::PipelineStageFlags{
+		    vk::PipelineStageFlagBits::eColorAttachmentOutput |
+		    vk::PipelineStageFlagBits::eEarlyFragmentTests },
+		vk::PipelineStageFlags{
+		    vk::PipelineStageFlagBits::eColorAttachmentOutput |
+		    vk::PipelineStageFlagBits::eEarlyFragmentTests },
+		vk::AccessFlags{},
+		vk::AccessFlags{
+		    vk::AccessFlagBits::eColorAttachmentWrite |
+		    vk::AccessFlagBits::eDepthStencilAttachmentWrite }
+	};
+
 	const vk::RenderPassCreateInfo renderPassInfo{
-		vk::RenderPassCreateFlags{}, 1u, &colorDescription, 1,
-		&subpassDescription,         0,  nullptr,
+		vk::RenderPassCreateFlags{},
+		static_cast<std::uint32_t>(size(attachments)),
+		attachments.data(),
+		1u,
+		&subpassDescription,
+		1u,
+		&dependency,
+		nullptr
 	};
 
 	return device.createRenderPass(renderPassInfo);

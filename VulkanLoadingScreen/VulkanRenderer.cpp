@@ -26,7 +26,7 @@ struct UniformBufferObject
 
 struct Vertex
 {
-	QVector2D m_Position{};
+	QVector3D m_Position{};
 	QVector3D m_Color{};
 	QVector2D m_TextureCoordinate{};
 
@@ -54,7 +54,7 @@ struct Vertex
 			    vk::VertexInputAttributeDescription{
 			        0,
 			        0,
-			        vk::Format::eR32G32Sfloat,
+			        vk::Format::eR32G32B32Sfloat,
 			        offsetof(Vertex, m_Position),
 			    },
 			    // Color description
@@ -77,29 +77,39 @@ struct Vertex
 	}
 };
 
-constexpr std::array<Vertex, 4> VertexData{
+constexpr std::array VertexData{
 	Vertex{
-	    QVector2D{ -0.5f, -0.5f },
-	    QVector3D{ 1.0f, 1.0f, 1.0f },
-	    QVector2D{ 1.f, 0.f },
-	},
-	Vertex{
-	    QVector2D{ 0.5f, -0.5f },
-	    QVector3D{ 0.0f, 1.0f, 0.0f },
-	    QVector2D{ 0.f, 0.f },
-	},
-	Vertex{
-	    QVector2D{ 0.5f, 0.5f },
+	    QVector3D{ -0.5f, -0.5f, 0.0f },
 	    QVector3D{ 1.0f, 0.0f, 0.0f },
-	    QVector2D{ 0.f, 1.f },
+	    QVector2D{ 0.0f, 0.0f },
 	},
 	Vertex{
-	    QVector2D{ -0.5f, 0.5f },
-	    QVector3D{ 0.0f, 0.0f, 1.0f },
-	    QVector2D{ 1.f, 1.f },
+	    QVector3D{ 0.5f, -0.5f, 0.0f },
+	    QVector3D{ 0.0f, 1.0f, 0.0f },
+	    QVector2D{ 1.0f, 0.0f },
 	},
+	Vertex{
+	    QVector3D{ 0.5f, 0.5f, 0.0f },
+	    QVector3D{ 0.0f, 0.0f, 1.0f },
+	    QVector2D{ 1.0f, 1.0f },
+	},
+	Vertex{
+	    QVector3D{ -0.5f, 0.5f, 0.0f },
+	    QVector3D{ 1.0f, 1.0f, 1.0f },
+	    QVector2D{ 0.0f, 1.0f },
+	},
+
+	Vertex{ QVector3D{ -0.5f, -0.5f, -0.5f },
+	        QVector3D{ 1.0f, 0.0f, 0.0f }, QVector2D{ 0.0f, 0.0f } },
+	Vertex{ QVector3D{ 0.5f, -0.5f, -0.5f },
+	        QVector3D{ 0.0f, 1.0f, 0.0f }, QVector2D{ 1.0f, 0.0f } },
+	Vertex{ QVector3D{ 0.5f, 0.5f, -0.5f },
+	        QVector3D{ 0.0f, 0.0f, 1.0f }, QVector2D{ 1.0f, 1.0f } },
+	Vertex{ QVector3D{ -0.5f, 0.5f, -0.5f },
+	        QVector3D{ 1.0f, 1.0f, 1.0f }, QVector2D{ 0.0f, 1.0f } },
 };
-constexpr std::array<std::uint16_t, 6> IndexData{ 0, 1, 2, 2, 3, 0 };
+constexpr std::array<std::uint16_t, 12> IndexData{ 0, 1, 2, 2, 3, 0,
+	                                               4, 5, 6, 6, 7, 4 };
 
 } // namespace
 
@@ -526,6 +536,7 @@ void VulkanRenderer::initResources()
 {
 	m_Device         = vk::Device{ m_Window->device() };
 	m_PhysicalDevice = vk::PhysicalDevice{ m_Window->physicalDevice() };
+	VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
 
 	loadTextures();
 	createTextureImageView();
@@ -629,6 +640,20 @@ void VulkanRenderer::initResources()
 	createDescriptorPool();
 	createDescriptorSets();
 
+	constexpr vk::PipelineDepthStencilStateCreateInfo depthStencil{
+		vk::PipelineDepthStencilStateCreateFlags{},
+		VK_TRUE,
+		VK_TRUE,
+		vk::CompareOp::eLess,
+		VK_FALSE,
+		VK_FALSE,
+		vk::StencilOpState{},
+		vk::StencilOpState{},
+		0.f,
+		1.f,
+		nullptr
+	};
+
 	vk::PipelineColorBlendStateCreateInfo colorBlendCreateInfo{};
 	std::tie(colorBlendCreateInfo, m_PipelineLayout) =
 	    createPipelineLayoutInfo(m_Device, m_DescriptorSetLayout);
@@ -643,7 +668,7 @@ void VulkanRenderer::initResources()
 		&dynamicViewportInfo,
 		&rasterizationInfo,
 		&multisampling,
-		nullptr,
+		&depthStencil,
 		&colorBlendCreateInfo,
 		&pipelineDynamicState,
 		m_PipelineLayout,
@@ -686,17 +711,19 @@ void VulkanRenderer::initSwapChainResources()
 	    "Creating SwapChainResources for size [{}x{}] and {} images\n",
 	    size.width(), size.height(), m_SwapChainImageCount);
 
+	const vk::ImageView depthImageView{
+		m_Window->depthStencilImageView()
+	};
 	for (std::uint32_t i{ 0u }; i < m_SwapChainImageCount; ++i)
 	{
-		const vk::ImageView swapChainImage{
-			m_Window->swapChainImageView(i)
+		const std::array<vk::ImageView, 2> attachmentImageViews{
+			m_Window->swapChainImageView(i), depthImageView
 		};
 
 		const vk::FramebufferCreateInfo framebufferInfo{
 			vk::FramebufferCreateFlags{},
 			m_RenderPass,
-			1,
-			&swapChainImage,
+			attachmentImageViews,
 			static_cast<std::uint32_t>(size.width()),
 			static_cast<std::uint32_t>(size.height()),
 			1
@@ -755,8 +782,8 @@ void VulkanRenderer::startNextFrame()
 		return;
 	}
 	// CurrentFrame for buffers
+	const int currentFrame = m_Window->currentFrame();
 	// CurrentImageIdx for everything else
-	const int currentFrame    = m_Window->currentFrame();
 	const int currentImageIdx = m_Window->currentSwapChainImageIndex();
 
 	updateUniformBuffer(currentFrame, size);

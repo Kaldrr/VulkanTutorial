@@ -96,7 +96,6 @@ VulkanInstance::~VulkanInstance() noexcept
 	if (m_LogicalDevice.has_value())
 	{
 		m_LogicalDevice->destroy();
-		m_LogicalDevice.reset();
 	}
 
 	if (m_VulkanInstance.has_value())
@@ -104,10 +103,8 @@ VulkanInstance::~VulkanInstance() noexcept
 		if (m_DebugMessenger.has_value())
 		{
 			m_VulkanInstance->destroy(*m_DebugMessenger);
-			m_DebugMessenger.reset();
 		}
 		m_VulkanInstance->destroy();
-		m_VulkanInstance.reset();
 	}
 }
 
