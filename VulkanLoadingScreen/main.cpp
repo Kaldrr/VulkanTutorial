@@ -7,7 +7,7 @@
 
 #include <concepts>
 
-// Q_LOGGING_CATEGORY(lcVk, "qt.vulkan")
+//Q_LOGGING_CATEGORY(lcVk, "qt.vulkan")
 
 namespace
 {
@@ -44,15 +44,18 @@ std::vector<const char*> ToVector(const QByteArrayList& list)
 }
 } // namespace
 
+
 int main(int argc, char** argv)
 {
-	// QLoggingCategory::setFilterRules(QStringLiteral("qt.vulkan=true"));
+	//QLoggingCategory::setFilterRules(QStringLiteral("qt.vulkan=true"));
 	QGuiApplication app{ argc, argv };
 	QVulkanInstance qtVulkanInstance{};
 
+	// TODO: Using the built-in Qt Vulkan doesn't work
+	// crashes when initializing vk::Device from VkDevice...
 	constexpr bool UseExternalVulkan = true;
 	[[maybe_unused]] std::optional<VulkanInstance> vulkanInstance{};
-	if constexpr (UseExternalVulkan)
+	if (UseExternalVulkan)
 	{
 		VulkanInstance& vulkan = vulkanInstance.emplace();
 
@@ -63,7 +66,9 @@ int main(int argc, char** argv)
 
 		vulkan.InitializeVulkanInstance(vulkanLayersVector,
 		                                vulkanExtensionsVector);
+#ifndef NDEBUG
 		vulkan.InitializeDebugMessenger();
+#endif
 		// QVulkanWindow ALWAYS creates it's own device
 		// vulkanInstance->InitializeLogicalDevice(vulkanLayersVector,
 		//                                       vulkanExtensionsVector);
@@ -72,11 +77,9 @@ int main(int argc, char** argv)
 	qtVulkanInstance.setApiVersion(QVersionNumber{ 1, 3, 0 });
 	qtVulkanInstance.setExtensions(VulkanExtensions);
 	qtVulkanInstance.setLayers(VulkanLayers);
-
 	if (!qtVulkanInstance.create())
 		qFatal("Failed to create Vulkan instance: %d",
 		       qtVulkanInstance.errorCode());
-
 	const int returnCode = [&qtVulkanInstance] {
 		try
 		{

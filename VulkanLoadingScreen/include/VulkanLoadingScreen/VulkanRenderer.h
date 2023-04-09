@@ -2,6 +2,8 @@
 
 #include <QVulkanWindowRenderer>
 
+#include <VulkanLoadingScreen/ModelManager.h>
+
 #include <array>
 
 #include <vulkan/vulkan.hpp>
@@ -24,8 +26,6 @@ public:
 
 private:
 	[[nodiscard]] vk::ShaderModule createShader(const QString& name);
-	void createVertexBuffer();
-	void createIndexBuffer();
 	void createDescriptorSetLayout();
 	void createUniformBuffers();
 	void updateUniformBuffer(int idx, QSize currentSize);
@@ -53,12 +53,6 @@ private:
 	vk::Pipeline m_GraphicsPipeline{};
 	FrameArray<vk::Framebuffer> m_Framebuffers{};
 
-	vk::Buffer m_VertexBuffer{};
-	vk::DeviceMemory m_VertexBufferMemory{};
-
-	vk::Buffer m_IndexBuffer{};
-	vk::DeviceMemory m_IndexBufferMemory{};
-
 	vk::DescriptorSetLayout m_DescriptorSetLayout{};
 	FrameArray<vk::Buffer> m_UniformBuffers{};
 	FrameArray<vk::DeviceMemory> m_UniformDeviceMemory{};
@@ -75,4 +69,7 @@ private:
 	vk::Image m_DepthImage{};
 	vk::DeviceMemory m_DepthImageMemory{};
 	vk::ImageView m_DepthImageView{};
+
+	ModelManager m_ModelManager{};
+	std::vector<Model> m_Models{};
 };

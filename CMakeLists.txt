@@ -48,4 +48,5 @@ if (MSVC)
   set(WERROR_FLAG /WX)
 endif ()
 
+add_subdirectory(assimp)
 add_subdirectory(VulkanLoadingScreen)

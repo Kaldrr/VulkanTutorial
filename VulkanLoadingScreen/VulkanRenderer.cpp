@@ -1,3 +1,4 @@
+#include <VulkanLoadingScreen/Vertex.h>
 #include <VulkanLoadingScreen/VulkanHelpers.h>
 #include <VulkanLoadingScreen/VulkanRenderer.h>
 
@@ -23,94 +24,6 @@ struct UniformBufferObject
 
 	static_assert(sizeof(MatrixF4) == sizeof(std::array<float, 16>));
 };
-
-struct Vertex
-{
-	QVector3D m_Position{};
-	QVector3D m_Color{};
-	QVector2D m_TextureCoordinate{};
-
-	static_assert(sizeof(QVector2D) == sizeof(std::array<float, 2>));
-	static_assert(sizeof(QVector3D) == sizeof(std::array<float, 3>));
-
-	constexpr static vk::VertexInputBindingDescription
-	getBindingDescription()
-	{
-		constexpr vk::VertexInputBindingDescription bindingDescription{
-			0u,
-			sizeof(Vertex),
-			vk::VertexInputRate::eVertex,
-		};
-
-		return bindingDescription;
-	}
-
-	static auto getAttributeDescriptions()
-	{
-		constexpr static std::array<vk::VertexInputAttributeDescription,
-		                            3>
-		    attributeDescriptions{
-			    // Position description
-			    vk::VertexInputAttributeDescription{
-			        0,
-			        0,
-			        vk::Format::eR32G32B32Sfloat,
-			        offsetof(Vertex, m_Position),
-			    },
-			    // Color description
-			    vk::VertexInputAttributeDescription{
-			        1,
-			        0,
-			        vk::Format::eR32G32B32Sfloat,
-			        offsetof(Vertex, m_Color),
-			    },
-			    // Texture description
-			    vk::VertexInputAttributeDescription{
-			        2,
-			        0,
-			        vk::Format::eR32G32Sfloat,
-			        offsetof(Vertex, m_TextureCoordinate),
-			    },
-		    };
-
-		return std::span{ attributeDescriptions };
-	}
-};
-
-constexpr std::array VertexData{
-	Vertex{
-	    QVector3D{ -0.5f, -0.5f, 0.0f },
-	    QVector3D{ 1.0f, 0.0f, 0.0f },
-	    QVector2D{ 0.0f, 0.0f },
-	},
-	Vertex{
-	    QVector3D{ 0.5f, -0.5f, 0.0f },
-	    QVector3D{ 0.0f, 1.0f, 0.0f },
-	    QVector2D{ 1.0f, 0.0f },
-	},
-	Vertex{
-	    QVector3D{ 0.5f, 0.5f, 0.0f },
-	    QVector3D{ 0.0f, 0.0f, 1.0f },
-	    QVector2D{ 1.0f, 1.0f },
-	},
-	Vertex{
-	    QVector3D{ -0.5f, 0.5f, 0.0f },
-	    QVector3D{ 1.0f, 1.0f, 1.0f },
-	    QVector2D{ 0.0f, 1.0f },
-	},
-
-	Vertex{ QVector3D{ -0.5f, -0.5f, -0.5f },
-	        QVector3D{ 1.0f, 0.0f, 0.0f }, QVector2D{ 0.0f, 0.0f } },
-	Vertex{ QVector3D{ 0.5f, -0.5f, -0.5f },
-	        QVector3D{ 0.0f, 1.0f, 0.0f }, QVector2D{ 1.0f, 0.0f } },
-	Vertex{ QVector3D{ 0.5f, 0.5f, -0.5f },
-	        QVector3D{ 0.0f, 0.0f, 1.0f }, QVector2D{ 1.0f, 1.0f } },
-	Vertex{ QVector3D{ -0.5f, 0.5f, -0.5f },
-	        QVector3D{ 1.0f, 1.0f, 1.0f }, QVector2D{ 0.0f, 1.0f } },
-};
-constexpr std::array<std::uint16_t, 12> IndexData{ 0, 1, 2, 2, 3, 0,
-	                                               4, 5, 6, 6, 7, 4 };
-
 } // namespace
 
 VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
@@ -123,7 +36,7 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 	{
 		const QList<int> counts = window->supportedSampleCounts();
 		qDebug() << "Supported sample counts:" << counts;
-		for (int s = 16; s >= 4; s /= 2)
+		for (int s{ 16 }; s >= 4; s /= 2)
 		{
 			if (counts.contains(s))
 			{
@@ -160,74 +73,6 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 	return m_Device.createShaderModule(shaderInfo);
 }
 
-void VulkanRenderer::createVertexBuffer()
-{
-	constexpr vk::DeviceSize memorySize{ sizeof(VertexData) };
-
-	const auto [stagingBuffer, stagingMemory] = createDeviceBuffer(
-	    memorySize,
-	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
-	    vk::MemoryPropertyFlags{
-	        vk::MemoryPropertyFlagBits::eHostVisible |
-	        vk::MemoryPropertyFlagBits::eHostCoherent },
-	    m_Device, m_PhysicalDevice);
-
-	void* const devicePtr = m_Device.mapMemory(
-	    stagingMemory, 0, memorySize, vk::MemoryMapFlags{});
-	std::memcpy(devicePtr, static_cast<const void*>(&VertexData),
-	            memorySize);
-	m_Device.unmapMemory(stagingMemory);
-
-	std::tie(m_VertexBuffer, m_VertexBufferMemory) = createDeviceBuffer(
-	    memorySize,
-	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
-	                          vk::BufferUsageFlagBits::eVertexBuffer },
-	    vk::MemoryPropertyFlags{
-	        vk::MemoryPropertyFlagBits::eDeviceLocal },
-	    m_Device, m_PhysicalDevice);
-
-	copyBuffer(m_VertexBuffer, stagingBuffer, memorySize,
-	           vk::CommandPool{ m_Window->graphicsCommandPool() },
-	           m_Device, vk::Queue{ m_Window->graphicsQueue() });
-
-	m_Device.destroy(stagingBuffer);
-	m_Device.free(stagingMemory);
-}
-
-void VulkanRenderer::createIndexBuffer()
-{
-	constexpr vk::DeviceSize memorySize{ sizeof(IndexData) };
-
-	const auto [stagingBuffer, stagingMemory] = createDeviceBuffer(
-	    memorySize,
-	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
-	    vk::MemoryPropertyFlags{
-	        vk::MemoryPropertyFlagBits::eHostVisible |
-	        vk::MemoryPropertyFlagBits::eHostCoherent },
-	    m_Device, m_PhysicalDevice);
-
-	void* const devicePtr = m_Device.mapMemory(
-	    stagingMemory, 0, memorySize, vk::MemoryMapFlags{});
-	std::memcpy(devicePtr, static_cast<const void*>(&IndexData),
-	            memorySize);
-	m_Device.unmapMemory(stagingMemory);
-
-	std::tie(m_IndexBuffer, m_IndexBufferMemory) = createDeviceBuffer(
-	    memorySize,
-	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
-	                          vk::BufferUsageFlagBits::eIndexBuffer },
-	    vk::MemoryPropertyFlags{
-	        vk::MemoryPropertyFlagBits::eDeviceLocal },
-	    m_Device, m_PhysicalDevice);
-
-	copyBuffer(m_IndexBuffer, stagingBuffer, memorySize,
-	           vk::CommandPool{ m_Window->graphicsCommandPool() },
-	           m_Device, vk::Queue{ m_Window->graphicsQueue() });
-
-	m_Device.destroy(stagingBuffer);
-	m_Device.free(stagingMemory);
-}
-
 void VulkanRenderer::createDescriptorSetLayout()
 {
 	constexpr std::array<vk::DescriptorSetLayoutBinding, 2>
@@ -253,7 +98,7 @@ void VulkanRenderer::createDescriptorSetLayout()
 		vk::ArrayProxyNoTemporaries<
 		    const vk::DescriptorSetLayoutBinding>{
 		    descriptorSetLayouts },
-		nullptr
+		nullptr,
 	};
 
 	m_DescriptorSetLayout =
@@ -399,7 +244,7 @@ void VulkanRenderer::createDescriptorSets()
 void VulkanRenderer::loadTextures()
 {
 	// TODO: extract into helper function
-	QImage textureImage{ "./Textures/texture.jpg" };
+	QImage textureImage{ "./Textures/VikingRoom.png" };
 	assert(textureImage.isNull() == false);
 	textureImage.convertTo(QImage::Format::Format_RGBA8888);
 
@@ -538,11 +383,14 @@ void VulkanRenderer::initResources()
 	m_PhysicalDevice = vk::PhysicalDevice{ m_Window->physicalDevice() };
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
 
+	m_ModelManager.SetResouces(m_Device, m_PhysicalDevice,
+	                           m_Window->graphicsCommandPool(),
+	                           m_Window->graphicsQueue());
+	m_ModelManager.LoadModel("VikingRoom", "./Models/VikingRoom.obj");
+
 	loadTextures();
 	createTextureImageView();
 	createTextureSampler();
-	createVertexBuffer();
-	createIndexBuffer();
 
 	// Shaders
 	const vk::ShaderModule vertexShaderModule =
@@ -735,10 +583,9 @@ void VulkanRenderer::initSwapChainResources()
 
 void VulkanRenderer::releaseSwapChainResources()
 {
+	// TODO: Probably shouldn't be destroyed if window is small...
 	for (std::uint32_t i{ 0u }; i < m_SwapChainImageCount; ++i)
-	{
 		m_Device.destroy(m_Framebuffers[i]);
-	}
 }
 
 void VulkanRenderer::releaseResources()
@@ -755,16 +602,12 @@ void VulkanRenderer::releaseResources()
 	m_Device.destroy(m_DescriptorPool);
 	m_Device.destroy(m_DescriptorSetLayout);
 
-	m_Device.destroy(m_IndexBuffer);
-	m_Device.free(m_IndexBufferMemory);
-
-	m_Device.destroy(m_VertexBuffer);
-	m_Device.free(m_VertexBufferMemory);
-
 	m_Device.destroy(m_TextureSampler);
 	m_Device.destroy(m_TextureImageView);
 	m_Device.destroy(m_TextureImage);
 	m_Device.free(m_TextureImageMemory);
+
+	m_ModelManager.UnloadAllModels();
 
 	m_PhysicalDevice = vk::PhysicalDevice{};
 	m_Device         = vk::Device{};
@@ -841,16 +684,12 @@ void VulkanRenderer::startNextFrame()
 	commandBuffer.setScissor(0u, vk::ArrayProxy{ scissor });
 
 	constexpr vk::DeviceSize offset{ 0 };
-	commandBuffer.bindVertexBuffers(0, vk::ArrayProxy{ m_VertexBuffer },
-	                                vk::ArrayProxy{ offset });
-	commandBuffer.bindIndexBuffer(m_IndexBuffer, 0,
-	                              vk::IndexType::eUint16);
+
 	commandBuffer.bindDescriptorSets(
 	    vk::PipelineBindPoint::eGraphics, m_PipelineLayout, 0,
 	    vk::ArrayProxy{ m_DescriptorSets[currentFrame] },
 	    vk::ArrayProxy<const uint32_t>{});
-	commandBuffer.drawIndexed(
-	    static_cast<std::uint32_t>(IndexData.size()), 1, 0, 0, 0);
+	m_ModelManager.RenderAllModels(commandBuffer);
 
 	commandBuffer.endRenderPass();
 

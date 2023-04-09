@@ -53,15 +53,6 @@
 		nullptr
 	};
 
-	/*
-	uint32_t                                 srcSubpass_      = {}
-	uint32_t                                 dstSubpass_      = {}
-	::PipelineStageFlags srcStageMask_    = {}
-	::PipelineStageFlags dstStageMask_    = {}
-	::AccessFlags        srcAccessMask_   = {}
-	::AccessFlags        dstAccessMask_   = {}
-	::DependencyFlags    dependencyFlags_ = {}
-	*/
 	constexpr vk::SubpassDependency dependency{
 		VK_SUBPASS_EXTERNAL,
 		0u,

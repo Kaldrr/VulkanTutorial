@@ -5,6 +5,9 @@ find_package(Vulkan REQUIRED COMPONENTS glslc)
 find_program(glslc_executable NAMES glslc HINTS Vulkan::glslc)
 find_package(fmt CONFIG REQUIRED)
 
+set (CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+include(HelperFunctions)
+
 qt_standard_project_setup()
 
 set(SOURCE_FILES 
@@ -13,16 +16,25 @@ set(SOURCE_FILES
     VulkanRenderer.cpp 
     VulkanInstance.cpp 
     VulkanHelpers.cpp
+    ModelManager.cpp
 )
 set(HEADER_FILES
     include/VulkanLoadingScreen/MainWindow.h
     include/VulkanLoadingScreen/VulkanRenderer.h
     include/VulkanLoadingScreen/VulkanInstance.h
     include/VulkanLoadingScreen/VulkanHelpers.h
+    include/VulkanLoadingScreen/ModelManager.h
+    include/VulkanLoadingScreen/Vertex.h
 )
 set(SHADER_FILES
     Shaders/shader.frag
     Shaders/shader.vert
+)
+set(MODEL_FILES
+    Models/VikingRoom.obj
+)
+set(TEXTURE_FILES
+    Textures/VikingRoom.png
 )
 
 qt_add_executable(VulkanLoadingScreen
@@ -39,10 +51,11 @@ target_link_libraries(VulkanLoadingScreen
         Qt6::3DExtras
         ${VULKAN_LIB_LIST}
         fmt::fmt
+        assimp
 )
 
 target_include_directories(VulkanLoadingScreen
-    PRIVATE
+    PUBLIC
         include
         ${VULKAN_INCLUDE_DIRS}
 )
@@ -61,27 +74,6 @@ set_property(
 
 target_compile_options(VulkanLoadingScreen PRIVATE ${WERROR_FLAG} ${PEDANTIC_COMPILE_FLAGS})
 
-# Resources:
-#set_source_files_properties("Shaders/color_frag.spv"
-#    PROPERTIES QT_RESOURCE_ALIAS "color_frag.spv"
-#)
-
-#set_source_files_properties("Shaders/color_vert.spv"
-#    PROPERTIES QT_RESOURCE_ALIAS "color_vert.spv"
-#)
-
-#set(VulkanLoadingScreen_resource_files
-#    "Shaders/color_frag.spv"
-#    "Shaders/color_vert.spv"
-#)
-
-#qt_add_resources(VulkanLoadingScreen "VulkanLoadingScreen"
-#    PREFIX
-#        "/"
-#    FILES
-#        ${VulkanLoadingScreen_resource_files}
-#)
-
 install(TARGETS VulkanLoadingScreen
     RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
     BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
@@ -94,6 +86,10 @@ add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
   COMMAND ${CMAKE_COMMAND} $<$<CXX_COMPILER_ID:MSVC>:-E> copy $<TARGET_RUNTIME_DLLS:VulkanLoadingScreen> $<TARGET_FILE_DIR:VulkanLoadingScreen>
   COMMAND_EXPAND_LISTS
 )
+
+add_shader_dependency("${SHADER_FILES}")
+add_model_dependency("${MODEL_FILES}")
+add_textures_dependency("${TEXTURE_FILES}")
 
 if (WIN32) 
     get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
@@ -110,37 +106,4 @@ if (WIN32)
         COMMENT "Running windeployqt..."
 )
     add_custom_command(TARGET VulkanLoadingScreen PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory "Shaders")
-
-    # TODO Change it into a function
-    add_custom_command(TARGET VulkanLoadingScreen PRE_BUILD
-        COMMAND
-            ${glslc_executable} "--target-env=vulkan1.3"
-            "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/shader.vert" "-o" "Shaders/vert.spv"
-    )
-    add_custom_command(TARGET VulkanLoadingScreen PRE_BUILD
-        COMMAND
-            ${glslc_executable} "--target-env=vulkan1.3"
-            "${CMAKE_CURRENT_SOURCE_DIR}/Shaders/shader.frag" "-O" "-o" "Shaders/frag.spv"
-    )
-
-    # we don't want to copy if we're building in the source dir
-if (NOT CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR)
-
-    # list of files for which we add a copy rule
-    set(resource_files "texture.jpg")
-
-    add_custom_command(
-        TARGET VulkanLoadingScreen 
-        PRE_BUILD 
-        COMMAND ${CMAKE_COMMAND} -E make_directory "Textures"
-    )
-    foreach(item IN LISTS resource_files)
-        add_custom_command(
-            TARGET VulkanLoadingScreen PRE_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/Textures/${item}" "${CMAKE_CURRENT_BINARY_DIR}/Textures/${item}"
-            DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/Textures/${item}"
-        )
-    endforeach()
-endif()
-
-endif(WIN32)
+    endif(WIN32)
