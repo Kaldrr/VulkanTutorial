@@ -42,10 +42,10 @@ public:
 	void UnloadAllModels();
 
 private:
-	vk::Device m_Device;
-	vk::PhysicalDevice m_PhysicalDevice;
-	vk::CommandPool m_CommandPool;
-	vk::Queue m_WorkQueue;
+	vk::Device m_Device{};
+	vk::PhysicalDevice m_PhysicalDevice{};
+	vk::CommandPool m_CommandPool{};
+	vk::Queue m_WorkQueue{};
 
 	std::vector<Model> m_LoadedModels{};
 };

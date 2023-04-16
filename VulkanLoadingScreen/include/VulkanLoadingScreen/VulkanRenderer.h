@@ -34,7 +34,7 @@ private:
 	void loadTextures();
 	void createTextureImageView();
 	void createTextureSampler();
-	
+
 private:
 	template <typename T>
 	using FrameArray =

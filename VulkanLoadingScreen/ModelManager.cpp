@@ -27,6 +27,7 @@ ModelManager::ModelManager()
 
 ModelManager::~ModelManager() noexcept
 {
+	UnloadAllModels();
 	Assimp::DefaultLogger::kill();
 }
 
@@ -112,8 +113,8 @@ void ModelManager::LoadModel(std::string modelName,
 		const std::span meshFaces{ mesh->mFaces, mesh->mNumFaces };
 		for (const aiFace& face : meshFaces)
 		{
-			indices.append_range(
-			    std::span{ face.mIndices, face.mNumIndices });
+			indices.insert(indices.end(), face.mIndices,
+			               face.mIndices + face.mNumIndices);
 		}
 	}
 

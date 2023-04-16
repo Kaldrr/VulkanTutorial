@@ -1,12 +1,11 @@
 #include <VulkanLoadingScreen/VulkanHelpers.h>
 
-[[nodiscard]] vk::RenderPass createRenderPass(
-    const vk::Device& device,
-    const VkFormat colorFormat,
-    const VkFormat depthFormat,
-    const std::uint32_t sampleCount)
+vk::RenderPass createRenderPass(const vk::Device& device,
+                                const VkFormat colorFormat,
+                                const VkFormat depthFormat,
+                                const std::uint32_t sampleCount)
 {
-	const std::array<vk::AttachmentDescription, 2> attachments{
+	const std::array attachments{
 		// Color attachment
 		vk::AttachmentDescription{
 		    vk::AttachmentDescriptionFlags{},
@@ -17,20 +16,32 @@
 		    vk::AttachmentLoadOp::eDontCare,
 		    vk::AttachmentStoreOp::eDontCare,
 		    vk::ImageLayout::eUndefined,
-		    vk::ImageLayout::ePresentSrcKHR,
+		    vk::ImageLayout::eColorAttachmentOptimal,
 		},
 		// Depth stencil attachment
 		vk::AttachmentDescription{
 		    vk::AttachmentDescriptionFlags{},
 		    vk::Format{ depthFormat },
-		    vk::SampleCountFlagBits::e1,
+		    static_cast<vk::SampleCountFlagBits>(sampleCount),
 		    vk::AttachmentLoadOp::eClear,
 		    vk::AttachmentStoreOp::eDontCare,
 		    vk::AttachmentLoadOp::eDontCare,
 		    vk::AttachmentStoreOp::eDontCare,
 		    vk::ImageLayout::eUndefined,
 		    vk::ImageLayout::eDepthStencilAttachmentOptimal,
-		}
+		},
+		// MSAA attachment
+		vk::AttachmentDescription{
+		    vk::AttachmentDescriptionFlags{},
+		    vk::Format{ colorFormat },
+		    vk::SampleCountFlagBits::e1,
+		    vk::AttachmentLoadOp::eDontCare,
+		    vk::AttachmentStoreOp::eDontCare,
+		    vk::AttachmentLoadOp::eDontCare,
+		    vk::AttachmentStoreOp::eDontCare,
+		    vk::ImageLayout::eUndefined,
+		    vk::ImageLayout::ePresentSrcKHR,
+		},
 	};
 
 	constexpr vk::AttachmentReference colorAttachmentRef{
@@ -38,6 +49,9 @@
 	};
 	constexpr vk::AttachmentReference depthAttachmentRef{
 		1u, vk::ImageLayout::eDepthStencilAttachmentOptimal
+	};
+	constexpr vk::AttachmentReference colorAttachmentResolveRef{
+		2u, vk::ImageLayout::eColorAttachmentOptimal
 	};
 
 	const vk::SubpassDescription subpassDescription{
@@ -47,7 +61,7 @@
 		nullptr,
 		1u,
 		&colorAttachmentRef,
-		nullptr,
+		&colorAttachmentResolveRef,
 		&depthAttachmentRef,
 		0,
 		nullptr
@@ -82,13 +96,13 @@
 	return device.createRenderPass(renderPassInfo);
 }
 
-[[nodiscard]] std::tuple<vk::PipelineColorBlendStateCreateInfo,
-                         vk::PipelineLayout>
+std::tuple<vk::PipelineColorBlendStateCreateInfo, vk::PipelineLayout>
 createPipelineLayoutInfo(
     const vk::Device& device,
     const vk::DescriptorSetLayout& descriptorSetLayout)
 {
-	// Band-aid as we need to return address outside of the function...
+	// Band-aid as we need to return address outside of the
+	// function...
 	constexpr static vk::PipelineColorBlendAttachmentState
 	    colorBlendState{
 		    VK_FALSE,
@@ -126,7 +140,7 @@ createPipelineLayoutInfo(
 		     device.createPipelineLayout(pipelineLayoutCreateInfo) };
 }
 
-[[nodiscard]] std::uint32_t findMemoryType(
+std::uint32_t findMemoryType(
     const vk::PhysicalDevice& physicalDevice,
     const vk::MemoryPropertyFlags memoryProperties,
     const std::uint32_t typeFilter)
@@ -149,12 +163,12 @@ createPipelineLayoutInfo(
 	};
 }
 
-[[nodiscard]] std::tuple<vk::Buffer, vk::DeviceMemory>
-createDeviceBuffer(const vk::DeviceSize bufferSize,
-                   const vk::BufferUsageFlags bufferFlags,
-                   const vk::MemoryPropertyFlags memoryFlags,
-                   const vk::Device& device,
-                   const vk::PhysicalDevice& physicalDevie)
+std::tuple<vk::Buffer, vk::DeviceMemory> createDeviceBuffer(
+    const vk::DeviceSize bufferSize,
+    const vk::BufferUsageFlags bufferFlags,
+    const vk::MemoryPropertyFlags memoryFlags,
+    const vk::Device& device,
+    const vk::PhysicalDevice& physicalDevie)
 {
 	const vk::BufferCreateInfo bufferInfo{
 		vk::BufferCreateFlags{},     bufferSize, bufferFlags,

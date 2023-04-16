@@ -2,6 +2,7 @@
 
 #include <vulkan/vulkan.hpp>
 
+#include <optional>
 #include <span>
 
 class VulkanInstance

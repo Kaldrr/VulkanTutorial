@@ -26,6 +26,6 @@ MainWindow::~MainWindow()
 QVulkanWindowRenderer* MainWindow::createRenderer()
 {
     // TODO: fix multisampling
-    return new VulkanRenderer{this, false};
+    return new VulkanRenderer{this, true};
 }
 

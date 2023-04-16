@@ -38,10 +38,8 @@ set(TEXTURE_FILES
 )
 
 qt_add_executable(VulkanLoadingScreen
-    MANUAL_FINALIZATION
         ${SOURCE_FILES}
         ${HEADER_FILES}
-        ${SHADER_FILES}
 )
 
 target_link_libraries(VulkanLoadingScreen
@@ -65,6 +63,11 @@ target_compile_definitions(VulkanLoadingScreen
         VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
 )
 
+set_target_properties(VulkanLoadingScreen PROPERTIES
+    WIN32_EXECUTABLE ON
+    MACOSX_BUNDLE ON
+)
+
 set_property(
 	TARGET 
 		VulkanLoadingScreen 
@@ -75,21 +78,15 @@ set_property(
 target_compile_options(VulkanLoadingScreen PRIVATE ${WERROR_FLAG} ${PEDANTIC_COMPILE_FLAGS})
 
 install(TARGETS VulkanLoadingScreen
-    RUNTIME DESTINATION "${INSTALL_EXAMPLEDIR}"
-    BUNDLE DESTINATION "${INSTALL_EXAMPLEDIR}"
-    LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    BUNDLE DESTINATION .
+    LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
-
-qt_finalize_executable(VulkanLoadingScreen)
 
 add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
   COMMAND ${CMAKE_COMMAND} $<$<CXX_COMPILER_ID:MSVC>:-E> copy $<TARGET_RUNTIME_DLLS:VulkanLoadingScreen> $<TARGET_FILE_DIR:VulkanLoadingScreen>
   COMMAND_EXPAND_LISTS
 )
-
-add_shader_dependency("${SHADER_FILES}")
-add_model_dependency("${MODEL_FILES}")
-add_textures_dependency("${TEXTURE_FILES}")
 
 if (WIN32) 
     get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
@@ -97,13 +94,16 @@ if (WIN32)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
 
     add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
-        COMMAND "${CMAKE_COMMAND}" -E
-            env PATH="${_qt_bin_dir}" "${WINDEPLOYQT_EXECUTABLE}"
+        COMMAND "${WINDEPLOYQT_EXECUTABLE}"
                 "$<$<CONFIG:Debug>:--debug>"
                 "$<$<CONFIG:Release>:--release>"
                 "--no-compiler-runtime"
                 "$<TARGET_FILE:VulkanLoadingScreen>"
+                "--no-translations"
         COMMENT "Running windeployqt..."
 )
-    add_custom_command(TARGET VulkanLoadingScreen PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory "Shaders")
     endif(WIN32)
+
+add_shader_dependency("${SHADER_FILES}")
+add_model_dependency("${MODEL_FILES}")
+add_textures_dependency("${TEXTURE_FILES}")

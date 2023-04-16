@@ -48,8 +48,7 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 	}
 }
 
-[[nodiscard]] vk::ShaderModule VulkanRenderer::createShader(
-    const QString& name)
+vk::ShaderModule VulkanRenderer::createShader(const QString& name)
 {
 	QFile file{ name };
 	if (!file.open(QIODevice::OpenModeFlag::ReadOnly))
@@ -564,8 +563,12 @@ void VulkanRenderer::initSwapChainResources()
 	};
 	for (std::uint32_t i{ 0u }; i < m_SwapChainImageCount; ++i)
 	{
-		const std::array<vk::ImageView, 2> attachmentImageViews{
-			m_Window->swapChainImageView(i), depthImageView
+		const vk::ImageView msaaColorImageView{
+			m_Window->msaaColorImageView(i)
+		};
+		const std::array<vk::ImageView, 3> attachmentImageViews{
+			msaaColorImageView, depthImageView,
+			m_Window->swapChainImageView(i)
 		};
 
 		const vk::FramebufferCreateInfo framebufferInfo{
