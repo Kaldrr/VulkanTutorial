@@ -15,8 +15,8 @@ struct Vertex
 	static_assert(sizeof(QVector2D) == sizeof(std::array<float, 2>));
 	static_assert(sizeof(QVector3D) == sizeof(std::array<float, 3>));
 
-	constexpr static vk::VertexInputBindingDescription
-	getBindingDescription()
+	[[nodiscard]] constexpr static vk::VertexInputBindingDescription
+	getBindingDescription() noexcept
 	{
 		constexpr vk::VertexInputBindingDescription bindingDescription{
 			0u,
@@ -27,7 +27,7 @@ struct Vertex
 		return bindingDescription;
 	}
 
-	static auto getAttributeDescriptions()
+	[[nodiscard]] constexpr static auto getAttributeDescriptions() noexcept
 	{
 		constexpr static std::array<vk::VertexInputAttributeDescription,
 		                            3>

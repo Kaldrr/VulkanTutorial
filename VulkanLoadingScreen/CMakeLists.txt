@@ -38,7 +38,6 @@ set(TEXTURE_FILES
 )
 
 qt_add_executable(VulkanLoadingScreen
-    MANUAL_FINALIZATION
         ${SOURCE_FILES}
         ${HEADER_FILES}
         ${SHADER_FILES}
@@ -49,7 +48,7 @@ target_link_libraries(VulkanLoadingScreen
 		Qt6::Widgets
 		Qt6::Core
         Qt6::3DExtras
-        ${VULKAN_LIB_LIST}
+        ${Vulkan_LIBRARIES}
         fmt::fmt
         assimp
 )
@@ -80,18 +79,18 @@ install(TARGETS VulkanLoadingScreen
     LIBRARY DESTINATION "${INSTALL_EXAMPLEDIR}"
 )
 
-qt_finalize_executable(VulkanLoadingScreen)
-
-add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
-  COMMAND ${CMAKE_COMMAND} $<$<CXX_COMPILER_ID:MSVC>:-E> copy $<TARGET_RUNTIME_DLLS:VulkanLoadingScreen> $<TARGET_FILE_DIR:VulkanLoadingScreen>
-  COMMAND_EXPAND_LISTS
-)
+if (WIN32)
+    add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:VulkanLoadingScreen> $<TARGET_FILE_DIR:VulkanLoadingScreen>
+      COMMAND_EXPAND_LISTS
+    )
+endif()
 
 add_shader_dependency("${SHADER_FILES}")
 add_model_dependency("${MODEL_FILES}")
 add_textures_dependency("${TEXTURE_FILES}")
 
-if (WIN32) 
+if (WIN32)
     get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
     get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
     find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${_qt_bin_dir}")
@@ -106,4 +105,4 @@ if (WIN32)
         COMMENT "Running windeployqt..."
 )
     add_custom_command(TARGET VulkanLoadingScreen PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory "Shaders")
-    endif(WIN32)
+endif(WIN32)

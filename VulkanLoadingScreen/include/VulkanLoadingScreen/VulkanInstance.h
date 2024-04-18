@@ -13,20 +13,27 @@ public:
 	void InitializeVulkanInstance(
 	    std::span<const char* const> vulkanLayers,
 	    std::span<const char* const> vulkanExtensions);
+
 	void InitializeDebugMessenger();
+
 	void InitializeLogicalDevice(
 	    std::span<const char* const> vulkanLayers,
 	    std::span<const char* const> vulkanExtensions);
 
-	[[nodiscard]] bool IsVulkanInstanceInitialized() const noexcept
+	[[nodiscard]] constexpr bool IsVulkanInstanceInitialized()
+		const noexcept
 	{
 		return m_VulkanInstance.has_value();
 	}
-	[[nodiscard]] bool IsDebugMessengerInitialized() const noexcept
+
+	[[nodiscard]] constexpr bool IsDebugMessengerInitialized()
+		const noexcept
 	{
 		return m_DebugMessenger.has_value();
 	}
-	[[nodiscard]] bool IsLogicalDeviceInitialized() const noexcept
+
+	[[nodiscard]] constexpr bool IsLogicalDeviceInitialized()
+		const noexcept
 	{
 		return m_LogicalDevice.has_value();
 	}
@@ -35,11 +42,13 @@ public:
 	{
 		return m_VulkanInstance.value();
 	}
+
 	[[nodiscard]] constexpr vk::DebugUtilsMessengerEXT
 	GetDebugMessenger() const
 	{
 		return m_DebugMessenger.value();
 	}
+
 	[[nodiscard]] constexpr vk::Device GetLogicalDevice() const
 	{
 		return m_LogicalDevice.value();

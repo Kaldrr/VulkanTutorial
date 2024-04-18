@@ -1,15 +1,15 @@
 #pragma once
 
+#include <QObject>
 #include <QVulkanWindow>
 
-class MainWindow : public QVulkanWindow
+class [[nodiscard]] MainWindow : public QVulkanWindow
 {
-    Q_OBJECT
+	Q_OBJECT
 
 public:
-    MainWindow();
-    explicit MainWindow(QWindow *parent);
-    ~MainWindow();
+	MainWindow();
+	explicit MainWindow(QWindow* parent);
 
-    QVulkanWindowRenderer* createRenderer() override;
+	[[nodiscard]] QVulkanWindowRenderer* createRenderer() override;
 };

@@ -683,7 +683,7 @@ void VulkanRenderer::startNextFrame()
 	commandBuffer.setViewport(0u, vk::ArrayProxy{ viewport });
 	commandBuffer.setScissor(0u, vk::ArrayProxy{ scissor });
 
-	constexpr vk::DeviceSize offset{ 0 };
+	[[maybe_unused]] constexpr vk::DeviceSize offset{ 0 };
 
 	commandBuffer.bindDescriptorSets(
 	    vk::PipelineBindPoint::eGraphics, m_PipelineLayout, 0,
