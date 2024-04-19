@@ -40,9 +40,7 @@
       "installDir": "${sourceDir}/out/install/${presetName}",
       "cacheVariables": {
         "CMAKE_C_COMPILER": "cl.exe",
-        "CMAKE_CXX_COMPILER": "cl.exe",
-        "CMAKE_PREFIX_PATH": "E:/Qt/6.5.0/msvc2019_64",
-        "CMAKE_TOOLCHAIN_FILE": "E:/git/vcpkg/scripts/buildsystems/vcpkg.cmake"
+        "CMAKE_CXX_COMPILER": "cl.exe"
       },
       "condition": {
         "type": "equals",

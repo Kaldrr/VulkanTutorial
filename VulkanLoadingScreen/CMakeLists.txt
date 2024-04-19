@@ -47,7 +47,7 @@ target_link_libraries(VulkanLoadingScreen
 		Qt6::Widgets
 		Qt6::Core
         Qt6::3DExtras
-        ${VULKAN_LIB_LIST}
+        ${Vulkan_LIBRARIES}
         fmt::fmt
         assimp
 )
@@ -83,10 +83,12 @@ install(TARGETS VulkanLoadingScreen
     LIBRARY DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
-  COMMAND ${CMAKE_COMMAND} $<$<CXX_COMPILER_ID:MSVC>:-E> copy $<TARGET_RUNTIME_DLLS:VulkanLoadingScreen> $<TARGET_FILE_DIR:VulkanLoadingScreen>
-  COMMAND_EXPAND_LISTS
-)
+if (WIN32)
+    add_custom_command(TARGET VulkanLoadingScreen POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_RUNTIME_DLLS:VulkanLoadingScreen> $<TARGET_FILE_DIR:VulkanLoadingScreen>
+      COMMAND_EXPAND_LISTS
+    )
+endif()
 
 if (WIN32) 
     get_target_property(_qmake_executable Qt6::qmake IMPORTED_LOCATION)
@@ -102,7 +104,10 @@ if (WIN32)
                 "--no-translations"
         COMMENT "Running windeployqt..."
 )
-    endif(WIN32)
+endif(WIN32)
+
+add_custom_command(TARGET VulkanLoadingScreen PRE_BUILD COMMAND ${CMAKE_COMMAND} -E make_directory "Shaders")
+
 
 add_shader_dependency("${SHADER_FILES}")
 add_model_dependency("${MODEL_FILES}")

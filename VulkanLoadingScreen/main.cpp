@@ -1,13 +1,9 @@
 #include <VulkanLoadingScreen/MainWindow.h>
-
-#include <QApplication>
-#include <QLoggingCategory>
-
 #include <VulkanLoadingScreen/VulkanInstance.h>
 
-#include <concepts>
+#include <QApplication>
 
-//Q_LOGGING_CATEGORY(lcVk, "qt.vulkan")
+#include <fmt/core.h>
 
 namespace
 {
@@ -21,65 +17,63 @@ const QByteArrayList VulkanLayers{
 const QByteArrayList VulkanExtensions{
 	"VK_KHR_surface",
 	"VK_KHR_portability_enumeration",
-	"VK_EXT_debug_report",
+#ifdef  Q_OS_LINUX
+	"VK_KHR_wayland_surface",
+#elif defined(Q_OS_WIN32)
 	"VK_KHR_win32_surface",
+#endif
 #ifndef NDEBUG
 	VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
 };
 
-// QByteArrayList can't be cast to a const char*...
+// QByteArrayList can't be cast to a const char* :(
 // sizeof(QByteArray) == 24, we need conversions when passing to vulkan
 std::vector<const char*> ToVector(const QByteArrayList& list)
 {
 	using std::begin, std::end, std::size;
 
 	std::vector<const char*> outVector{};
-	outVector.reserve(size(list));
-	std::transform(begin(list), end(list),
-	               std::back_inserter(outVector),
+	outVector.reserve(static_cast<std::size_t>(size(list)));
+	std::transform(begin(list), end(list), std::back_inserter(outVector),
 	               std::mem_fn(&QByteArray::constData));
 
 	return outVector;
 }
 } // namespace
 
-
 int main(int argc, char** argv)
 {
-	//QLoggingCategory::setFilterRules(QStringLiteral("qt.vulkan=true"));
 	QGuiApplication app{ argc, argv };
 	QVulkanInstance qtVulkanInstance{};
 
 	// TODO: Using the built-in Qt Vulkan doesn't work
-	// crashes when initializing vk::Device from VkDevice...
+	// crashes when initializing vk::Device from VkDevice
 	constexpr bool UseExternalVulkan = true;
 	[[maybe_unused]] std::optional<VulkanInstance> vulkanInstance{};
 	if (UseExternalVulkan)
 	{
 		VulkanInstance& vulkan = vulkanInstance.emplace();
 
-		const std::vector<const char*> vulkanLayersVector =
-		    ToVector(VulkanLayers);
+		const std::vector<const char*> vulkanLayersVector = ToVector(VulkanLayers);
 		const std::vector<const char*> vulkanExtensionsVector =
 		    ToVector(VulkanExtensions);
 
-		vulkan.InitializeVulkanInstance(vulkanLayersVector,
-		                                vulkanExtensionsVector);
+		vulkan.InitializeVulkanInstance(vulkanLayersVector, vulkanExtensionsVector);
 #ifndef NDEBUG
 		vulkan.InitializeDebugMessenger();
 #endif
-		// QVulkanWindow ALWAYS creates it's own device
-		// vulkanInstance->InitializeLogicalDevice(vulkanLayersVector,
-		//                                       vulkanExtensionsVector);
 		qtVulkanInstance.setVkInstance(vulkan.GetVulkanInstance());
 	}
 	qtVulkanInstance.setApiVersion(QVersionNumber{ 1, 3, 0 });
 	qtVulkanInstance.setExtensions(VulkanExtensions);
 	qtVulkanInstance.setLayers(VulkanLayers);
 	if (!qtVulkanInstance.create())
+	{
 		qFatal("Failed to create Vulkan instance: %d",
-		       qtVulkanInstance.errorCode());
+			   qtVulkanInstance.errorCode());
+		return -1;
+	}
 	const int returnCode = [&qtVulkanInstance] {
 		try
 		{

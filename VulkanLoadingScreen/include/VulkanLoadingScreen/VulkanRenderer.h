@@ -42,7 +42,7 @@ private:
 
 	QVulkanWindow* const m_Window{ nullptr };
 	// The value is constant for the entire lifetime of the
-	// QVulkanWindow, So we can make it const
+	// QVulkanWindow, we can make it const
 	const std::uint32_t m_ConcurrentFrameCount{};
 	std::uint32_t m_SwapChainImageCount{};
 

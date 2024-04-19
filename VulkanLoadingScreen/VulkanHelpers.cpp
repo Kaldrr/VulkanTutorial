@@ -279,7 +279,7 @@ void copyBufferToImage(const vk::Buffer& buffer,
 }
 
 void transitionImageLayout(const vk::Image& image,
-                           const vk::Format format,
+                           [[maybe_unused]] const vk::Format format,
                            const vk::ImageLayout oldLayout,
                            const vk::ImageLayout newLayout,
                            const vk::Device& device,

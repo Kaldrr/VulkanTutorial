@@ -1,4 +1,5 @@
 #pragma once
+#include <cstdint>
 #include <filesystem>
 
 #include <vulkan/vulkan.hpp>
@@ -12,16 +13,16 @@ struct Model
 {
 	std::string m_ModelName{};
 
-	unsigned int m_VertexCount{};
+	std::uint32_t m_VertexCount{};
 	vk::Buffer m_VertexBuffer{};
 	vk::DeviceMemory m_VertexBufferMemory{};
 
-	unsigned int m_IndexCount{};
+	std::uint32_t m_IndexCount{};
 	vk::Buffer m_IndexBuffer{};
 	vk::DeviceMemory m_IndexBufferMemory{};
 };
 
-class ModelManager
+class [[nodiscard]] ModelManager
 {
 public:
 	ModelManager();
@@ -37,7 +38,7 @@ public:
 	                 vk::Queue workQueue);
 
 	void LoadModel(std::string modelName,
-	               const std::filesystem::path& modelPath);
+				   const std::filesystem::path& modelPath);
 	void RenderAllModels(vk::CommandBuffer commandBuffer);
 	void UnloadAllModels();
 

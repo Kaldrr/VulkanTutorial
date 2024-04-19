@@ -25,12 +25,14 @@ function (add_model_dependency models)
 	add_custom_command(
 		TARGET VulkanLoadingScreen 
 		PRE_BUILD COMMAND 
-		${CMAKE_COMMAND} -E make_directory "Models"
+                ${CMAKE_COMMAND} -E make_directory "Models"
 	)
-	foreach(model ${models})
+        foreach(model ${models})
         add_custom_command(
             OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${model}"
-            COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_CURRENT_SOURCE_DIR}/${model}" "${CMAKE_CURRENT_BINARY_DIR}/${model}"
+            COMMAND ${CMAKE_COMMAND} -E copy
+                    ${CMAKE_CURRENT_SOURCE_DIR}/${model}
+                    ${CMAKE_CURRENT_BINARY_DIR}/${model}
             DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/${model}"
         )
 		list(APPEND MODEL_TARGETS "${CMAKE_CURRENT_BINARY_DIR}/${model}")
@@ -42,7 +44,7 @@ function (add_textures_dependency textures)
 	add_custom_command(
 		TARGET VulkanLoadingScreen 
 		PRE_BUILD COMMAND 
-		${CMAKE_COMMAND} -E make_directory "Textures"
+                ${CMAKE_COMMAND} -E make_directory "Textures"
 	)
 	foreach(texture ${textures})
         add_custom_command(
