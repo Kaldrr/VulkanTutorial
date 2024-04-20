@@ -1,52 +1,67 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(VulkanLoadingScreen VERSION 0.1 LANGUAGES CXX)
+# Enable Hot Reload for MSVC compilers if supported.
+if(POLICY CMP0141)
+  cmake_policy(SET CMP0141 NEW)
+  set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT
+      "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>"
+  )
+endif()
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-  set(PEDANTIC_COMPILE_FLAGS -pedantic-errors -Wall -Wextra -pedantic
-      -Wold-style-cast -Wundef
-      -Wredundant-decls -Wwrite-strings -Wpointer-arith
-      -Wcast-qual -Wformat=2 -Wmissing-include-dirs
-      -Wcast-align
-      -Wctor-dtor-privacy -Wdisabled-optimization
-      -Winvalid-pch -Woverloaded-virtual
-      -Wconversion -Wundef
-      -Wno-ctor-dtor-privacy -Wno-format-nonliteral)
-  if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 4.6)
-      set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS}
-         -Wno-dangling-else -Wno-unused-local-typedefs)
-  endif ()
-  if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 5.0)
-      set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS} -Wdouble-promotion
-          -Wtrampolines -Wzero-as-null-pointer-constant -Wuseless-cast
-          -Wvector-operation-performance -Wsized-deallocation -Wshadow)
-  endif ()
-  if (NOT CMAKE_CXX_COMPILER_VERSION VERSION_LESS 6.0)
-      set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS} -Wshift-overflow=2
-          -Wnull-dereference -Wduplicated-cond)
-  endif ()
-  set(WERROR_FLAG -Werror)
-endif ()
+project(
+  VulkanLoadingScreen
+  VERSION 0.1
+  LANGUAGES CXX)
 
-if (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-  set(PEDANTIC_COMPILE_FLAGS -Wall -Wextra -pedantic -Wconversion -Wundef
-      -Wdeprecated -Wweak-vtables -Wshadow
-      -Wno-gnu-zero-variadic-macro-arguments)
-  check_cxx_compiler_flag(-Wzero-as-null-pointer-constant HAS_NULLPTR_WARNING)
-  if (HAS_NULLPTR_WARNING)
-    set(PEDANTIC_COMPILE_FLAGS ${PEDANTIC_COMPILE_FLAGS}
-        -Wzero-as-null-pointer-constant)
-  endif ()
-  set(WERROR_FLAG -Werror)
-endif ()
+add_subdirectory(project_options)
 
-if (MSVC)
-  set(PEDANTIC_COMPILE_FLAGS /W3)
-  set(WERROR_FLAG /WX)
-endif ()
+option(ENABLE_SANITIZER_ADDRESS "Enable address sanitizer" OFF)
+option(ENABLE_SANITIZER_UNDEFINED_BEHAVIOR "Enable UB sanitizer" OFF)
+option(ENABLE_SANITIZER_LEAK "Enable leak sanitizer" OFF)
+option(ENABLE_SANITIZER_THREAD "Enable thread sanitizer" OFF)
+option(ENABLE_SANITIZER_MEMORY "Enable memory sanitizer" OFF)
+option(ENABLE_ANALYSIS "Enable analysis" ON)
 
-add_subdirectory(assimp)
+check_sanitizers_support(SANITIZER_ADDRESS SANITIZER_UNDEFINED_BEHAVIOR
+                         SANITIZER_LEAK SANITIZER_THREAD SANITIZER_MEMORY)
+
+if(${ENABLE_SANITIZER_ADDRESS})
+  set(USE_SANITIZER_ADDRESS ${SANITIZER_ADDRESS})
+endif()
+if(${ENABLE_SANITIZER_UNDEFINED_BEHAVIOR})
+  set(USE_SANITIZER_UNDEFINED_BEHAVIOR ${SANITIZER_UNDEFINED_BEHAVIOR})
+endif()
+if(${ENABLE_SANITIZER_LEAK})
+  set(USE_SANITIZER_LEAK ${SANITIZER_LEAK})
+endif()
+if(${ENABLE_SANITIZER_THREAD})
+  set(USE_SANITIZER_THREAD ${SANITIZER_THREAD})
+endif()
+if(${ENABLE_SANITIZER_MEMORY})
+  set(USE_SANITIZER_MEMORY ${SANITIZER_MEMORY})
+endif()
+
+if(ENABLE_ANALYSIS)
+  set(ENABLE_CPPCHECK "ENABLE_CPPCHECK")
+  set(ENABLE_CLANG_TIDY "ENABLE_CLANG_TIDY")
+  set(ENABLE_VS_ANALYSIS "ENABLE_VS_ANALYSIS")
+endif()
+
+project_options(
+  PREFIX
+  "VulkanLoadingScreen"
+  ${ENABLE_CPPCHECK}
+  ${ENABLE_CLANG_TIDY}
+  ${ENABLE_VS_ANALYSIS}
+  ENABLE_NATIVE_OPTIMIZATION
+  ${USE_SANITIZER_ADDRESS}
+  ${USE_SANITIZER_UNDEFINED_BEHAVIOR}
+  ${USE_SANITIZER_LEAK}
+  ${USE_SANITIZER_THREAD}
+  ${USE_SANITIZER_MEMORY}
+  WARNINGS_AS_ERRORS)
+
 add_subdirectory(VulkanLoadingScreen)

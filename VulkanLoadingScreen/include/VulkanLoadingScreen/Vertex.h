@@ -8,53 +8,40 @@
 
 struct Vertex
 {
-	QVector3D m_Position{};
-	QVector3D m_Color{};
-	QVector2D m_TextureCoordinate{};
+	QVector3D Position;
+	QVector3D Color;
+	QVector2D TextureCoordinate;
 
 	static_assert(sizeof(QVector2D) == sizeof(std::array<float, 2>));
 	static_assert(sizeof(QVector3D) == sizeof(std::array<float, 3>));
 
 	[[nodiscard]] constexpr static vk::VertexInputBindingDescription
-	getBindingDescription() noexcept
+	GetBindingDescription() noexcept
 	{
-		constexpr vk::VertexInputBindingDescription bindingDescription{
-			0u,
-			sizeof(Vertex),
-			vk::VertexInputRate::eVertex,
+		constexpr vk::VertexInputBindingDescription BindingDescription{
+			0U, sizeof(Vertex), vk::VertexInputRate::eVertex
 		};
 
-		return bindingDescription;
+		return BindingDescription;
 	}
 
-	[[nodiscard]] constexpr static auto getAttributeDescriptions() noexcept
+	[[nodiscard]] static auto GetAttributeDescriptions() noexcept
 	{
-		constexpr static std::array<vk::VertexInputAttributeDescription,
-		                            3>
-		    attributeDescriptions{
+		const static std::array<vk::VertexInputAttributeDescription, 3>
+			AttributeDescriptions{
 			    // Position description
-			    vk::VertexInputAttributeDescription{
-			        0,
-			        0,
-			        vk::Format::eR32G32B32Sfloat,
-			        offsetof(Vertex, m_Position),
-			    },
+				vk::VertexInputAttributeDescription{ 0, 0,
+													 vk::Format::eR32G32B32Sfloat,
+													 offsetof(Vertex, Position) },
 			    // Color description
 			    vk::VertexInputAttributeDescription{
-			        1,
-			        0,
-			        vk::Format::eR32G32B32Sfloat,
-			        offsetof(Vertex, m_Color),
-			    },
+					1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, Color) },
 			    // Texture description
 			    vk::VertexInputAttributeDescription{
-			        2,
-			        0,
-			        vk::Format::eR32G32Sfloat,
-			        offsetof(Vertex, m_TextureCoordinate),
-			    },
+					2, 0, vk::Format::eR32G32Sfloat,
+					offsetof(Vertex, TextureCoordinate) },
 		    };
 
-		return std::span{ attributeDescriptions };
+		return std::span{ AttributeDescriptions };
 	}
 };

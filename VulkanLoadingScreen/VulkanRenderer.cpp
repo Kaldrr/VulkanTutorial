@@ -8,7 +8,6 @@
 #include <fmt/core.h>
 
 #include <filesystem>
-#include <numbers>
 
 // QMatrix4x4 includes a 'flag' which would make copying harder
 
@@ -16,18 +15,20 @@ using MatrixF4 = QGenericMatrix<4, 4, float>;
 
 namespace
 {
+constexpr int MinimumWindowSize = 5;
+
 struct UniformBufferObject
 {
-	MatrixF4 m_Model{};
-	MatrixF4 m_View{};
-	MatrixF4 m_Perspective{};
+	MatrixF4 Model;
+	MatrixF4 View;
+	MatrixF4 Perspective;
 
-	static_assert(sizeof(MatrixF4) == sizeof(std::array<float, 16>));
+	constexpr static std::size_t NumberOfElements = 16;
+	static_assert(sizeof(MatrixF4) == sizeof(std::array<float, NumberOfElements>));
 };
 } // namespace
 
-VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
-                               const bool msaa)
+VulkanRenderer::VulkanRenderer(QVulkanWindow* const window, const bool msaa)
     : m_Window{ window }
     , m_ConcurrentFrameCount{ static_cast<std::uint32_t>(
 	      m_Window->concurrentFrameCount()) }
@@ -36,29 +37,28 @@ VulkanRenderer::VulkanRenderer(QVulkanWindow* const window,
 	{
 		const QList<int> counts = window->supportedSampleCounts();
 		qDebug() << "Supported sample counts:" << counts;
-		for (int s{ 16 }; s >= 4; s /= 2)
+
+		constexpr int StartingSampleCount = 16;
+		for (int samples{ StartingSampleCount }; samples >= 4; samples /= 2)
 		{
-			if (counts.contains(s))
+			if (counts.contains(samples))
 			{
-				qDebug("Requesting sample count %d", s);
-				m_Window->setSampleCount(s);
+				qDebug() << "Requesting sample count:" << samples;
+				m_Window->setSampleCount(samples);
 				break;
 			}
 		}
 	}
 }
 
-vk::ShaderModule VulkanRenderer::createShader(const QString& name)
+vk::ShaderModule VulkanRenderer::CreateShader(const QString& name) const
 {
 	QFile file{ name };
 	if (!file.open(QIODevice::OpenModeFlag::ReadOnly))
 	{
-		const std::filesystem::path pwd{
-			std::filesystem::current_path()
-		};
-		throw std::runtime_error{ fmt::format(
-			"Failed to open {}/{} shader file", pwd.string(),
-			name.toStdString()) };
+		const std::filesystem::path pwd{ std::filesystem::current_path() };
+		throw std::runtime_error{ fmt::format("Failed to open {}/{} shader file",
+			                                  pwd.string(), name.toStdString()) };
 	}
 	const QByteArray blob = file.readAll();
 	file.close();
@@ -66,117 +66,106 @@ vk::ShaderModule VulkanRenderer::createShader(const QString& name)
 	const vk::ShaderModuleCreateInfo shaderInfo{
 		vk::ShaderModuleCreateFlags{},
 		static_cast<std::size_t>(blob.size()),
+		// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
 		reinterpret_cast<const std::uint32_t*>(blob.constData()),
 	};
 
 	return m_Device.createShaderModule(shaderInfo);
 }
 
-void VulkanRenderer::createDescriptorSetLayout()
+void VulkanRenderer::CreateDescriptorSetLayout()
 {
-	constexpr std::array<vk::DescriptorSetLayoutBinding, 2>
-	    descriptorSetLayouts{
-		    // UniformBufferObject layout
-		    vk::DescriptorSetLayoutBinding{
-		        0u,
-		        vk::DescriptorType::eUniformBuffer,
-		        1u,
-		        vk::ShaderStageFlags{
-		            vk::ShaderStageFlagBits::eVertex },
-		        nullptr,
-		    },
-		    // Texture image sampler layout
-		    vk::DescriptorSetLayoutBinding{
-		        1u, vk::DescriptorType::eCombinedImageSampler, 1u,
-		        vk::ShaderStageFlags{
-		            vk::ShaderStageFlagBits::eFragment },
-		        nullptr }
-	    };
+	constexpr std::array<vk::DescriptorSetLayoutBinding, 2> DescriptorSetLayouts{
+		// UniformBufferObject layout
+		vk::DescriptorSetLayoutBinding{
+		    0U,
+		    vk::DescriptorType::eUniformBuffer,
+		    1U,
+		    vk::ShaderStageFlags{ vk::ShaderStageFlagBits::eVertex },
+		    nullptr,
+		},
+		// Texture image sampler layout
+		vk::DescriptorSetLayoutBinding{
+		    1U, vk::DescriptorType::eCombinedImageSampler, 1U,
+		    vk::ShaderStageFlags{ vk::ShaderStageFlagBits::eFragment }, nullptr }
+	};
 	const vk::DescriptorSetLayoutCreateInfo layoutInfo{
 		vk::DescriptorSetLayoutCreateFlags{},
-		vk::ArrayProxyNoTemporaries<
-		    const vk::DescriptorSetLayoutBinding>{
-		    descriptorSetLayouts },
+		vk::ArrayProxyNoTemporaries<const vk::DescriptorSetLayoutBinding>{
+		    DescriptorSetLayouts },
 		nullptr,
 	};
 
-	m_DescriptorSetLayout =
-	    m_Device.createDescriptorSetLayout(layoutInfo);
+	m_DescriptorSetLayout = m_Device.createDescriptorSetLayout(layoutInfo);
 }
 
-void VulkanRenderer::createUniformBuffers()
+void VulkanRenderer::CreateUniformBuffers()
 {
-	constexpr vk::DeviceSize bufferSize = sizeof(UniformBufferObject);
+	constexpr vk::DeviceSize BufferSize = sizeof(UniformBufferObject);
 
 	for (std::uint32_t i{ 0 }; i < m_ConcurrentFrameCount; ++i)
 	{
-		std::tie(m_UniformBuffers[i], m_UniformDeviceMemory[i]) =
-		    createDeviceBuffer(
-		        bufferSize,
-		        vk::BufferUsageFlags{
-		            vk::BufferUsageFlagBits::eUniformBuffer },
-		        vk::MemoryPropertyFlags{
-		            vk::MemoryPropertyFlagBits::eHostVisible |
-		            vk::MemoryPropertyFlagBits::eHostCoherent },
-		        m_Device, m_PhysicalDevice);
+		vk::DeviceMemory& deviceMemory = m_UniformDeviceMemory.at(i);
+		std::tie(m_UniformBuffers.at(i), deviceMemory) = CreateDeviceBuffer(
+			BufferSize,
+			vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eUniformBuffer },
+			vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eHostVisible |
+									 vk::MemoryPropertyFlagBits::eHostCoherent },
+			m_Device, m_PhysicalDevice);
 
 		// Persistent mapping, we won't be unmapping this
-		m_UniformBuffersMappedMemory[i] = m_Device.mapMemory(
-		    m_UniformDeviceMemory[i], vk::DeviceSize{ 0 }, bufferSize,
-		    vk::MemoryMapFlags{});
+		m_UniformBuffersMappedMemory.at(i) = m_Device.mapMemory(
+			deviceMemory, vk::DeviceSize{ 0 }, BufferSize, vk::MemoryMapFlags{});
 	}
 }
 
-void VulkanRenderer::updateUniformBuffer(const int idx,
-                                         const QSize currentSize)
+void VulkanRenderer::UpdateUniformBuffer(const int idx, const QSize currentSize)
 {
 	using Clock = std::chrono::steady_clock;
 	using FloatDuration =
 	    std::chrono::duration<float, std::chrono::seconds::period>;
 
-	static Clock::time_point startTime = Clock::now();
+	const static Clock::time_point StartTime = Clock::now();
 
 	const Clock::time_point currentTime = Clock::now();
-	const float time =
-	    FloatDuration{ currentTime - startTime }.count() * 36.f;
+	const float time = FloatDuration{ currentTime - StartTime }.count() * 36.F;
 
 	QMatrix4x4 modelMatrix{};
-	modelMatrix.rotate(time * qDegreesToRadians(90.f),
-	                   QVector3D{ 0.f, 0.f, 1.f });
+	constexpr float RotationSpeedDegrees = 90.F;
+	constexpr float RotationSpeed        = qDegreesToRadians(RotationSpeedDegrees);
+	modelMatrix.rotate(time * RotationSpeed, QVector3D{ 0.F, 0.F, 1.F });
 
+	// NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers, readability-magic-numbers)
 	QMatrix4x4 viewMatrix{};
-	viewMatrix.lookAt(QVector3D{ 2.f, 2.f, 2.f },
-	                  QVector3D{ 0.f, 0.f, 0.f },
-	                  QVector3D{ 0.f, 0.f, 1.f });
+	viewMatrix.lookAt(QVector3D{ 2.F, 2.F, 2.F }, QVector3D{ 0.F, 0.F, 0.F },
+	                  QVector3D{ 0.F, 0.F, 1.F });
 
 	QMatrix4x4 perspectiveMatrix{};
-	perspectiveMatrix.perspective(
-	    45.f, // This MUST be in degrees, not radians
-	    static_cast<float>(currentSize.width()) /
-	        static_cast<float>(currentSize.height()),
-	    0.1f, 10.f);
-	perspectiveMatrix(1, 1) *= -1.f;
+	perspectiveMatrix.perspective(45.F, // This MUST be in degrees, not radians
+	                              static_cast<float>(currentSize.width()) /
+	                                  static_cast<float>(currentSize.height()),
+	                              0.1F, 10.F);
+	perspectiveMatrix(1, 1) *= -1.F;
+	// NOLINTEND(cppcoreguidelines-avoid-magic-numbers, readability-magic-numbers)
 
-	const UniformBufferObject ubo{
-		// GenericMatrix has same layout as a plain array
-		modelMatrix.toGenericMatrix<4, 4>(),
-		viewMatrix.toGenericMatrix<4, 4>(),
-		perspectiveMatrix.toGenericMatrix<4, 4>()
+	const UniformBufferObject ubo{ // GenericMatrix has same layout as a plain array
+		                           modelMatrix.toGenericMatrix<4, 4>(),
+		                           viewMatrix.toGenericMatrix<4, 4>(),
+		                           perspectiveMatrix.toGenericMatrix<4, 4>()
 	};
-	std::memcpy(m_UniformBuffersMappedMemory[idx], &ubo,
-	            sizeof(UniformBufferObject));
+	std::memcpy(m_UniformBuffersMappedMemory.at(static_cast<std::size_t>(idx)),
+				&ubo, sizeof(UniformBufferObject));
 }
 
-void VulkanRenderer::createDescriptorPool()
+void VulkanRenderer::CreateDescriptorPool()
 {
 	const std::array<vk::DescriptorPoolSize, 2> poolSizes{
 		// Uniform buffer size
 		vk::DescriptorPoolSize{ vk::DescriptorType::eUniformBuffer,
 		                        m_ConcurrentFrameCount },
 		// Texture image sampler size
-		vk::DescriptorPoolSize{
-		    vk::DescriptorType::eCombinedImageSampler,
-		    m_ConcurrentFrameCount }
+		vk::DescriptorPoolSize{ vk::DescriptorType::eCombinedImageSampler,
+		                        m_ConcurrentFrameCount }
 	};
 	const vk::DescriptorPoolCreateInfo poolInfo{
 		vk::DescriptorPoolCreateFlags{},
@@ -188,7 +177,7 @@ void VulkanRenderer::createDescriptorPool()
 	m_DescriptorPool = m_Device.createDescriptorPool(poolInfo);
 }
 
-void VulkanRenderer::createDescriptorSets()
+void VulkanRenderer::CreateDescriptorSets()
 {
 	FrameArray<vk::DescriptorSetLayout> layouts{};
 	layouts.fill(m_DescriptorSetLayout);
@@ -200,71 +189,63 @@ void VulkanRenderer::createDescriptorSets()
 		nullptr,
 	};
 
-	const vk::Result result = m_Device.allocateDescriptorSets(
-	    &allocInfo, m_DescriptorSets.data());
+	const vk::Result result =
+	    m_Device.allocateDescriptorSets(&allocInfo, m_DescriptorSets.data());
 	if (result != vk::Result::eSuccess)
 	{
-		throw std::runtime_error{
-			"Failed to allocate descriptor sets"
-		};
+		throw std::runtime_error{ "Failed to allocate descriptor sets" };
 	}
 
-	for (std::uint32_t i{ 0u }; i < m_ConcurrentFrameCount; ++i)
+	for (std::uint32_t i{ 0U }; i < m_ConcurrentFrameCount; ++i)
 	{
-		const vk::DescriptorBufferInfo bufferInfo{
-			m_UniformBuffers[i], 0, sizeof(UniformBufferObject)
-		};
+		const vk::DescriptorBufferInfo bufferInfo{ m_UniformBuffers.at(i), 0,
+			                                       sizeof(UniformBufferObject) };
 
 		const vk::DescriptorImageInfo imageInfo{
 			m_TextureSampler, m_TextureImageView,
 			vk::ImageLayout::eShaderReadOnlyOptimal
 		};
 
+		const vk::DescriptorSet& descriptorSet = m_DescriptorSets.at(i);
 		const std::array<vk::WriteDescriptorSet, 2> descriptorWrites{
 			// UniformBufferObject write
-			vk::WriteDescriptorSet{ m_DescriptorSets[i], 0u, 0u, 1u,
-			                        vk::DescriptorType::eUniformBuffer,
-			                        nullptr, &bufferInfo, nullptr,
-			                        nullptr },
+			vk::WriteDescriptorSet{ descriptorSet, 0U, 0U, 1U,
+			                        vk::DescriptorType::eUniformBuffer, nullptr,
+			                        &bufferInfo, nullptr, nullptr },
 			// Texture image sampler write
-			vk::WriteDescriptorSet{
-			    m_DescriptorSets[i], 1u, 0u, 1u,
-			    vk::DescriptorType::eCombinedImageSampler, &imageInfo,
-			    nullptr, nullptr },
+			vk::WriteDescriptorSet{ descriptorSet, 1U, 0U, 1U,
+			                        vk::DescriptorType::eCombinedImageSampler,
+			                        &imageInfo, nullptr, nullptr },
 		};
 
 		m_Device.updateDescriptorSets(
-		    vk::ArrayProxy<const vk::WriteDescriptorSet>{
-		        descriptorWrites },
+		    vk::ArrayProxy<const vk::WriteDescriptorSet>{ descriptorWrites },
 		    vk::ArrayProxy<const vk::CopyDescriptorSet>{});
 	}
 }
 
-void VulkanRenderer::loadTextures()
+void VulkanRenderer::LoadTextures()
 {
 	// TODO: extract into helper function
 	QImage textureImage{ "./Textures/VikingRoom.png" };
 	assert(textureImage.isNull() == false);
 	textureImage.convertTo(QImage::Format::Format_RGBA8888);
 
-	const vk::DeviceSize textureSize =
+	const auto textureSize =
 	    static_cast<vk::DeviceSize>(textureImage.sizeInBytes());
 
-	const auto [stagingBuffer, stagingBufferMemory] =
-	    createDeviceBuffer(
-	        textureSize,
-	        vk::BufferUsageFlags{
-	            vk::BufferUsageFlagBits::eTransferSrc },
-	        vk::MemoryPropertyFlags{
-	            vk::MemoryPropertyFlagBits::eHostVisible |
-	            vk::MemoryPropertyFlagBits::eHostCoherent },
-	        m_Device, m_PhysicalDevice);
+	const auto [stagingBuffer, stagingBufferMemory] = CreateDeviceBuffer(
+	    textureSize, vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
+	    vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eHostVisible |
+	                             vk::MemoryPropertyFlagBits::eHostCoherent },
+	    m_Device, m_PhysicalDevice);
 
 	void* const memoryPtr =
-	    m_Device.mapMemory(stagingBufferMemory, vk::DeviceSize{ 0 },
-	                       textureSize, vk::MemoryMapFlags{});
+	    m_Device.mapMemory(stagingBufferMemory, vk::DeviceSize{ 0 }, textureSize,
+	                       vk::MemoryMapFlags{});
 	std::memcpy(memoryPtr,
-	            reinterpret_cast<const void*>(textureImage.constBits()),
+				// NOLINTNEXTLINE(cppcoreguidelines-pro-type-reinterpret-cast)
+				reinterpret_cast<const void*>(textureImage.constBits()),
 	            textureSize);
 	m_Device.unmapMemory(stagingBufferMemory);
 
@@ -273,16 +254,15 @@ void VulkanRenderer::loadTextures()
 		vk::ImageType::e2D,
 		vk::Format::eR8G8B8A8Srgb,
 		vk::Extent3D{ static_cast<std::uint32_t>(textureImage.width()),
-		              static_cast<std::uint32_t>(textureImage.height()),
-		              1u },
-		1u,
-		1u,
+		              static_cast<std::uint32_t>(textureImage.height()), 1U },
+		1U,
+		1U,
 		vk::SampleCountFlagBits::e1,
 		vk::ImageTiling::eOptimal,
 		vk::ImageUsageFlags{ vk::ImageUsageFlagBits::eTransferDst |
 		                     vk::ImageUsageFlagBits::eSampled },
 		vk::SharingMode::eExclusive,
-		0u,
+		0U,
 		nullptr,
 		vk::ImageLayout::eUndefined,
 		nullptr
@@ -294,60 +274,55 @@ void VulkanRenderer::loadTextures()
 	    m_Device.getImageMemoryRequirements(m_TextureImage);
 	const vk::MemoryAllocateInfo textureAllocationInfo{
 		imageRequirements.size,
-		findMemoryType(m_PhysicalDevice,
-		               vk::MemoryPropertyFlags{
-		                   vk::MemoryPropertyFlagBits::eDeviceLocal },
-		               imageRequirements.memoryTypeBits),
+		FindMemoryType(
+		    m_PhysicalDevice,
+		    vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eDeviceLocal },
+		    imageRequirements.memoryTypeBits),
 		nullptr
 	};
-	m_TextureImageMemory =
-	    m_Device.allocateMemory(textureAllocationInfo);
+	m_TextureImageMemory = m_Device.allocateMemory(textureAllocationInfo);
 	m_Device.bindImageMemory(m_TextureImage, m_TextureImageMemory,
 	                         vk::DeviceSize{ 0 });
 
-	const vk::CommandPool commandPool{
-		m_Window->graphicsCommandPool()
-	};
+	const vk::CommandPool commandPool{ m_Window->graphicsCommandPool() };
 	const vk::Queue queue{ m_Window->graphicsQueue() };
 
-	transitionImageLayout(m_TextureImage, vk::Format::eR8G8B8A8Srgb,
-	                      vk::ImageLayout::eUndefined,
-	                      vk::ImageLayout::eTransferDstOptimal,
-	                      m_Device, commandPool, queue);
-	copyBufferToImage(stagingBuffer, m_TextureImage,
+	TransitionImageLayout(
+	    m_TextureImage, vk::Format::eR8G8B8A8Srgb, vk::ImageLayout::eUndefined,
+	    vk::ImageLayout::eTransferDstOptimal, m_Device, commandPool, queue);
+	CopyBufferToImage(stagingBuffer, m_TextureImage,
 	                  static_cast<std::uint32_t>(textureImage.width()),
-	                  static_cast<std::uint32_t>(textureImage.height()),
-	                  m_Device, commandPool, queue);
-	transitionImageLayout(m_TextureImage, vk::Format::eR8G8B8A8Srgb,
+	                  static_cast<std::uint32_t>(textureImage.height()), m_Device,
+	                  commandPool, queue);
+	TransitionImageLayout(m_TextureImage, vk::Format::eR8G8B8A8Srgb,
 	                      vk::ImageLayout::eTransferDstOptimal,
-	                      vk::ImageLayout::eShaderReadOnlyOptimal,
-	                      m_Device, commandPool, queue);
+	                      vk::ImageLayout::eShaderReadOnlyOptimal, m_Device,
+	                      commandPool, queue);
 
 	m_Device.destroy(stagingBuffer);
 	m_Device.free(stagingBufferMemory);
 }
 
-void VulkanRenderer::createTextureImageView()
+void VulkanRenderer::CreateTextureImageView()
 {
 	const vk::ImageViewCreateInfo viewInfo{
 		vk::ImageViewCreateFlags{},
 		m_TextureImage,
 		vk::ImageViewType::e2D,
 		vk::Format::eR8G8B8A8Srgb,
-		vk::ComponentMapping{ vk::ComponentSwizzle::eIdentity,
-		                      vk::ComponentSwizzle::eIdentity,
-		                      vk::ComponentSwizzle::eIdentity,
-		                      vk::ComponentSwizzle::eIdentity },
+		vk::ComponentMapping{
+		    vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity,
+		    vk::ComponentSwizzle::eIdentity, vk::ComponentSwizzle::eIdentity },
 		vk::ImageSubresourceRange{
-		    vk::ImageAspectFlags{ vk::ImageAspectFlagBits::eColor }, 0u,
-		    1u, 0u, 1u },
+		    vk::ImageAspectFlags{ vk::ImageAspectFlagBits::eColor }, 0U, 1U, 0U,
+		    1U },
 		nullptr
 	};
 
 	m_TextureImageView = m_Device.createImageView(viewInfo);
 }
 
-void VulkanRenderer::createTextureSampler()
+void VulkanRenderer::CreateTextureSampler()
 {
 	const vk::PhysicalDeviceProperties deviceProperties{
 		*m_Window->physicalDeviceProperties()
@@ -361,13 +336,13 @@ void VulkanRenderer::createTextureSampler()
 		vk::SamplerAddressMode::eRepeat,
 		vk::SamplerAddressMode::eRepeat,
 		vk::SamplerAddressMode::eRepeat,
-		0.f,
+		0.F,
 		VK_TRUE,
 		deviceProperties.limits.maxSamplerAnisotropy,
 		VK_FALSE,
 		vk::CompareOp::eAlways,
-		0.f,
-		0.f,
+		0.F,
+		0.F,
 		vk::BorderColor::eIntOpaqueBlack,
 		VK_FALSE,
 		nullptr
@@ -387,15 +362,15 @@ void VulkanRenderer::initResources()
 	                           m_Window->graphicsQueue());
 	m_ModelManager.LoadModel("VikingRoom", "./Models/VikingRoom.obj");
 
-	loadTextures();
-	createTextureImageView();
-	createTextureSampler();
+	LoadTextures();
+	CreateTextureImageView();
+	CreateTextureSampler();
 
 	// Shaders
 	const vk::ShaderModule vertexShaderModule =
-	    createShader(QStringLiteral("./Shaders/vert.spv"));
+		CreateShader(QStringLiteral("./Shaders/vert.spv"));
 	const vk::ShaderModule fragmentShaderModule =
-	    createShader(QStringLiteral("./Shaders/frag.spv"));
+		CreateShader(QStringLiteral("./Shaders/frag.spv"));
 
 	const std::array<vk::PipelineShaderStageCreateInfo, 2> shaderInfo{
 		// Vertex shader
@@ -416,78 +391,72 @@ void VulkanRenderer::initResources()
 		},
 	};
 
-	constexpr std::array<vk::DynamicState, 2> dynamicStates{
+	constexpr std::array<vk::DynamicState, 2> DynamicStates{
 		vk::DynamicState::eViewport,
 		vk::DynamicState::eScissor,
 	};
 	const vk::PipelineDynamicStateCreateInfo pipelineDynamicState{
 		vk::PipelineDynamicStateCreateFlags{},
-		static_cast<std::uint32_t>(dynamicStates.size()),
-		dynamicStates.data(),
+		static_cast<std::uint32_t>(DynamicStates.size()),
+		DynamicStates.data(),
 	};
 
-	constexpr vk::VertexInputBindingDescription
-	    vertexBindingDescription = Vertex::getBindingDescription();
-	const std::span vertexAttributeDescription =
-	    Vertex::getAttributeDescriptions();
+	constexpr vk::VertexInputBindingDescription VertexBindingDescription =
+		Vertex::GetBindingDescription();
+	const std::span vertexAttributeDescription = Vertex::GetAttributeDescriptions();
 
-	const vk::PipelineVertexInputStateCreateInfo
-	    pipelineVertexInputInfo{
-		    vk::PipelineVertexInputStateCreateFlags{},
-		    1,
-		    &vertexBindingDescription,
-		    static_cast<std::uint32_t>(
-		        size(vertexAttributeDescription)),
-		    vertexAttributeDescription.data(),
-	    };
+	const vk::PipelineVertexInputStateCreateInfo pipelineVertexInputInfo{
+		vk::PipelineVertexInputStateCreateFlags{},
+		1,
+		&VertexBindingDescription,
+		static_cast<std::uint32_t>(size(vertexAttributeDescription)),
+		vertexAttributeDescription.data(),
+	};
 
-	constexpr vk::PipelineInputAssemblyStateCreateInfo
-	    inputAssemblyInfo{
-		    vk::PipelineInputAssemblyStateCreateFlags{},
-		    vk::PrimitiveTopology::eTriangleList,
-		    VK_FALSE,
-	    };
-	constexpr vk::PipelineViewportStateCreateInfo dynamicViewportInfo{
+	constexpr vk::PipelineInputAssemblyStateCreateInfo InputAssemblyInfo{
+		vk::PipelineInputAssemblyStateCreateFlags{},
+		vk::PrimitiveTopology::eTriangleList,
+		VK_FALSE,
+	};
+	constexpr vk::PipelineViewportStateCreateInfo DynamicViewportInfo{
 		vk::PipelineViewportStateCreateFlags{}, 1, nullptr, 1, nullptr,
 	};
-	const std::uint32_t sampleCount =
+	const auto sampleCount =
 	    static_cast<std::uint32_t>(m_Window->sampleCountFlagBits());
 	const vk::PipelineMultisampleStateCreateInfo multisampling{
 		vk::PipelineMultisampleStateCreateFlags{},
 		static_cast<vk::SampleCountFlagBits>(sampleCount),
 		VK_FALSE,
-		1.f,
+		1.F,
 		nullptr,
 		VK_FALSE,
 		VK_FALSE,
 	};
 
-	constexpr vk::PipelineRasterizationStateCreateInfo
-	    rasterizationInfo{
-		    vk::PipelineRasterizationStateCreateFlags{},
-		    VK_FALSE,
-		    VK_FALSE,
-		    vk::PolygonMode::eFill,
-		    vk::CullModeFlags{ vk::CullModeFlagBits::eBack },
-		    vk::FrontFace::eCounterClockwise,
-		    VK_FALSE,
-		    0.f,
-		    0.f,
-		    0.f,
-		    1.f,
-	    };
+	constexpr vk::PipelineRasterizationStateCreateInfo RasterizationInfo{
+		vk::PipelineRasterizationStateCreateFlags{},
+		VK_FALSE,
+		VK_FALSE,
+		vk::PolygonMode::eFill,
+		vk::CullModeFlags{ vk::CullModeFlagBits::eNone },
+		vk::FrontFace::eCounterClockwise,
+		VK_FALSE,
+		0.F,
+		0.F,
+		0.F,
+		1.F,
+	};
 
 	/* Skip multisampling setup, it's handled by VulkanWindow? */
-	m_RenderPass =
-	    createRenderPass(m_Device, m_Window->colorFormat(),
-	                     m_Window->depthStencilFormat(), sampleCount);
+	m_RenderPass = CreateRenderPass(m_Device, m_Window->colorFormat(),
+	                                m_Window->depthStencilFormat(), sampleCount);
 
-	createDescriptorSetLayout();
-	createUniformBuffers();
-	createDescriptorPool();
-	createDescriptorSets();
+	CreateDescriptorSetLayout();
+	CreateUniformBuffers();
+	CreateDescriptorPool();
+	CreateDescriptorSets();
 
-	constexpr vk::PipelineDepthStencilStateCreateInfo depthStencil{
+	constexpr vk::PipelineDepthStencilStateCreateInfo DepthStencil{
 		vk::PipelineDepthStencilStateCreateFlags{},
 		VK_TRUE,
 		VK_TRUE,
@@ -496,26 +465,26 @@ void VulkanRenderer::initResources()
 		VK_FALSE,
 		vk::StencilOpState{},
 		vk::StencilOpState{},
-		0.f,
-		1.f,
+		0.F,
+		1.F,
 		nullptr
 	};
 
 	vk::PipelineColorBlendStateCreateInfo colorBlendCreateInfo{};
 	std::tie(colorBlendCreateInfo, m_PipelineLayout) =
-	    createPipelineLayoutInfo(m_Device, m_DescriptorSetLayout);
+		CreatePipelineLayoutInfo(m_Device, m_DescriptorSetLayout);
 
 	const vk::GraphicsPipelineCreateInfo pipelineCreateInfo{
 		vk::PipelineCreateFlags{},
 		static_cast<std::uint32_t>(shaderInfo.size()),
 		shaderInfo.data(),
 		&pipelineVertexInputInfo,
-		&inputAssemblyInfo,
+		&InputAssemblyInfo,
 		nullptr,
-		&dynamicViewportInfo,
-		&rasterizationInfo,
+		&DynamicViewportInfo,
+		&RasterizationInfo,
 		&multisampling,
-		&depthStencil,
+		&DepthStencil,
 		&colorBlendCreateInfo,
 		&pipelineDynamicState,
 		m_PipelineLayout,
@@ -525,16 +494,16 @@ void VulkanRenderer::initResources()
 		-1,
 	};
 
-	if (auto [res, pipeline] =
-	        m_Device.createGraphicsPipeline({}, pipelineCreateInfo);
-	    res != vk::Result::eSuccess)
+	auto [createPipelineResult, pipeline] =
+		m_Device.createGraphicsPipeline(vk::PipelineCache{}, pipelineCreateInfo);
+	if (createPipelineResult != vk::Result::eSuccess)
 	{
 		throw std::runtime_error{ fmt::format(
 			"Failed to create graphics pipeline: {}",
-			vk::to_string(res)) };
+			vk::to_string(createPipelineResult)) };
 	}
-	else
-		m_GraphicsPipeline = std::move(pipeline);
+
+	m_GraphicsPipeline = pipeline;
 
 	m_Device.destroy(vertexShaderModule);
 	m_Device.destroy(fragmentShaderModule);
@@ -544,31 +513,26 @@ void VulkanRenderer::initSwapChainResources()
 {
 	const QSize size = m_Window->swapChainImageSize();
 
-	m_SwapChainImageCount =
-	    static_cast<std::uint32_t>(m_Window->swapChainImageCount());
+	m_SwapChainImageCount = m_Window->swapChainImageCount();
 	// Window has been minimised, using this size for framebuffer is
 	// illegal
 	// + when window will be visible again it should return to
 	// previous size or at least we will get an event about resizing
-	// again :)
-	if (size.height() < 5 || size.width() < 5)
-		return;
-
-	fmt::print(
-	    "Creating SwapChainResources for size [{}x{}] and {} images\n",
-	    size.width(), size.height(), m_SwapChainImageCount);
-
-	const vk::ImageView depthImageView{
-		m_Window->depthStencilImageView()
-	};
-	for (std::uint32_t i{ 0u }; i < m_SwapChainImageCount; ++i)
+	// again
+	if (size.height() < MinimumWindowSize || size.width() < MinimumWindowSize)
 	{
-		const vk::ImageView msaaColorImageView{
-			m_Window->msaaColorImageView(i)
-		};
+		return;
+	}
+
+	fmt::print("Creating SwapChainResources for size [{}x{}] and {} images\n",
+	           size.width(), size.height(), m_SwapChainImageCount);
+
+	const vk::ImageView depthImageView{ m_Window->depthStencilImageView() };
+	for (int i{ 0U }; i < m_SwapChainImageCount; ++i)
+	{
+		const vk::ImageView msaaColorImageView{ m_Window->msaaColorImageView(i) };
 		const std::array<vk::ImageView, 3> attachmentImageViews{
-			msaaColorImageView, depthImageView,
-			m_Window->swapChainImageView(i)
+			msaaColorImageView, depthImageView, m_Window->swapChainImageView(i)
 		};
 
 		const vk::FramebufferCreateInfo framebufferInfo{
@@ -580,15 +544,18 @@ void VulkanRenderer::initSwapChainResources()
 			1
 		};
 
-		m_Framebuffers[i] = m_Device.createFramebuffer(framebufferInfo);
+		m_Framebuffers.at(static_cast<std::size_t>(i)) =
+			m_Device.createFramebuffer(framebufferInfo);
 	}
 }
 
 void VulkanRenderer::releaseSwapChainResources()
 {
 	// TODO: Probably shouldn't be destroyed if window is small...
-	for (std::uint32_t i{ 0u }; i < m_SwapChainImageCount; ++i)
-		m_Device.destroy(m_Framebuffers[i]);
+	for (int i{ 0U }; i < m_SwapChainImageCount; ++i)
+	{
+		m_Device.destroy(m_Framebuffers.at(static_cast<std::size_t>(i)));
+	}
 }
 
 void VulkanRenderer::releaseResources()
@@ -597,10 +564,10 @@ void VulkanRenderer::releaseResources()
 	m_Device.destroy(m_PipelineLayout);
 	m_Device.destroy(m_RenderPass);
 
-	for (std::uint32_t i{ 0u }; i < m_ConcurrentFrameCount; ++i)
+	for (std::uint32_t i{ 0U }; i < m_ConcurrentFrameCount; ++i)
 	{
-		m_Device.destroy(m_UniformBuffers[i]);
-		m_Device.freeMemory(m_UniformDeviceMemory[i]);
+		m_Device.destroy(m_UniformBuffers.at(i));
+		m_Device.freeMemory(m_UniformDeviceMemory.at(i));
 	}
 	m_Device.destroy(m_DescriptorPool);
 	m_Device.destroy(m_DescriptorSetLayout);
@@ -620,7 +587,7 @@ void VulkanRenderer::startNextFrame()
 {
 	const QSize size = m_Window->swapChainImageSize();
 	// Window not visible, no need to render anything
-	if (size.height() < 5 || size.width() < 5)
+	if (size.height() < MinimumWindowSize || size.width() < MinimumWindowSize)
 	{
 		// Tell window we're ready, otherwise we will hang here...
 		m_Window->frameReady();
@@ -632,66 +599,61 @@ void VulkanRenderer::startNextFrame()
 	// CurrentImageIdx for everything else
 	const int currentImageIdx = m_Window->currentSwapChainImageIndex();
 
-	updateUniformBuffer(currentFrame, size);
+	UpdateUniformBuffer(currentFrame, size);
 
-	const vk::SampleCountFlagBits sampleCount =
-	    static_cast<vk::SampleCountFlagBits>(
-	        m_Window->sampleCountFlagBits());
+	const auto sampleCount =
+	    static_cast<vk::SampleCountFlagBits>(m_Window->sampleCountFlagBits());
 
-	constexpr vk::ClearValue clearColor{
+	constexpr vk::ClearValue ClearColor{
 		vk::ClearColorValue{
-		    std::array<float, 4>{ 0.0f, 0.0f, 0.0f, 1.0f },
+		    std::array<float, 4>{ 0.0F, 0.0F, 0.0F, 1.0F },
 		},
 	};
-	constexpr vk::ClearDepthStencilValue clearDepthStencil{ 1.f, 0u };
-	constexpr std::array<vk::ClearValue, 3> clearValues{
-		vk::ClearValue{ clearColor },
-		vk::ClearValue{ clearDepthStencil },
-		vk::ClearValue{ clearColor },
+	constexpr vk::ClearDepthStencilValue ClearDepthStencil{ 1.F, 0U };
+	constexpr std::array<vk::ClearValue, 3> ClearValues{
+		vk::ClearValue{ ClearColor },
+		vk::ClearValue{ ClearDepthStencil },
+		vk::ClearValue{ ClearColor },
 	};
 
 	const vk::RenderPassBeginInfo renderPassInfo{
 		m_RenderPass,
-		m_Framebuffers[currentImageIdx],
+		m_Framebuffers.at(static_cast<std::size_t>(currentImageIdx)),
 		vk::Rect2D{
 		    vk::Offset2D{ 0, 0 },
 		    vk::Extent2D{ static_cast<std::uint32_t>(size.width()),
 		                  static_cast<std::uint32_t>(size.height()) },
 		},
-		sampleCount > vk::SampleCountFlagBits::e1 ? 3u : 2u,
-		clearValues.data(),
+		sampleCount > vk::SampleCountFlagBits::e1 ? 3U : 2U,
+		ClearValues.data(),
 	};
 
-	const vk::CommandBuffer commandBuffer{
-		m_Window->currentCommandBuffer()
-	};
-	commandBuffer.beginRenderPass(renderPassInfo,
-	                              vk::SubpassContents::eInline);
+	const vk::CommandBuffer commandBuffer{ m_Window->currentCommandBuffer() };
+	commandBuffer.beginRenderPass(renderPassInfo, vk::SubpassContents::eInline);
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
 	                           m_GraphicsPipeline);
 
 	const vk::Viewport viewport{
-		0.f,
-		0.f,
+		0.F,
+		0.F,
 		static_cast<float>(size.width()),
 		static_cast<float>(size.height()),
-		0.f,
-		1.f,
+		0.F,
+		1.F,
 	};
 	const vk::Rect2D scissor{
 		vk::Offset2D{ 0, 0 },
 		vk::Extent2D{ static_cast<std::uint32_t>(size.width()),
 		              static_cast<std::uint32_t>(size.height()) },
 	};
-	commandBuffer.setViewport(0u, vk::ArrayProxy{ viewport });
-	commandBuffer.setScissor(0u, vk::ArrayProxy{ scissor });
+	commandBuffer.setViewport(0U, vk::ArrayProxy{ viewport });
+	commandBuffer.setScissor(0U, vk::ArrayProxy{ scissor });
 
-	[[maybe_unused]] constexpr vk::DeviceSize offset{ 0 };
-
-	commandBuffer.bindDescriptorSets(
-	    vk::PipelineBindPoint::eGraphics, m_PipelineLayout, 0,
-	    vk::ArrayProxy{ m_DescriptorSets[currentFrame] },
-	    vk::ArrayProxy<const uint32_t>{});
+	commandBuffer.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+									 m_PipelineLayout, 0,
+									 vk::ArrayProxy{ m_DescriptorSets.at(
+										 static_cast<std::size_t>(currentFrame)) },
+									 vk::ArrayProxy<const uint32_t>{});
 	m_ModelManager.RenderAllModels(commandBuffer);
 
 	commandBuffer.endRenderPass();

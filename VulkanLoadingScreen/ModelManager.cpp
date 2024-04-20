@@ -13,7 +13,6 @@
 #include <numeric>
 #include <ranges>
 #include <type_traits>
-#include <utility>
 
 namespace
 {
@@ -52,7 +51,7 @@ void ModelManager::SetResouces(const vk::Device device,
 	m_WorkQueue      = workQueue;
 }
 
-void ModelManager::LoadModel(std::string modelName,
+void ModelManager::LoadModel(const std::string_view modelName,
 							 const std::filesystem::path& modelPath)
 {
 	Assimp::Importer modelImpoter{};
@@ -65,12 +64,12 @@ void ModelManager::LoadModel(std::string modelName,
 
 	const std::span sceneMeshes{ scene->mMeshes, scene->mNumMeshes };
 	const std::uint32_t vertexCount =
-		std::accumulate(begin(sceneMeshes), end(sceneMeshes), 0u,
+		std::accumulate(begin(sceneMeshes), end(sceneMeshes), 0U,
 						[](const std::uint32_t lhs, const aiMesh* const mesh) {
 							return lhs + mesh->mNumVertices;
 						});
 	const std::uint32_t indexCount =
-		std::accumulate(begin(sceneMeshes), end(sceneMeshes), 0u,
+		std::accumulate(begin(sceneMeshes), end(sceneMeshes), 0U,
 						[](const std::uint32_t lhs, const aiMesh* const mesh) {
 							// aiProcess_Triangulate -> all meshes are triangles
 							return lhs + mesh->mNumFaces * 3;
@@ -80,14 +79,14 @@ void ModelManager::LoadModel(std::string modelName,
 	const vk::DeviceSize indexBufferSize =
 		static_cast<vk::DeviceSize>(indexCount) * sizeof(std::uint32_t);
 
-	const auto [vertexStagingBuffer, vertexStagingMemory] = createDeviceBuffer(
+	const auto [vertexStagingBuffer, vertexStagingMemory] = CreateDeviceBuffer(
 		vertexBufferSize,
 		vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
 		vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eHostVisible |
 								 vk::MemoryPropertyFlagBits::eHostCoherent },
 		m_Device, m_PhysicalDevice);
 
-	const auto [indexStagingBuffer, indexStagingMemory] = createDeviceBuffer(
+	const auto [indexStagingBuffer, indexStagingMemory] = CreateDeviceBuffer(
 		indexBufferSize,
 		vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferSrc },
 		vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eHostVisible |
@@ -102,19 +101,25 @@ void ModelManager::LoadModel(std::string modelName,
 
 	for (const aiMesh* const mesh : sceneMeshes)
 	{
-		for (std::uint32_t i{ 0 }; i < mesh->mNumVertices; ++i)
-		{
-			const aiVector3D v{ mesh->mVertices[i] };
-			const aiVector3D t{ mesh->mTextureCoords[0][i] };
-			assert(0.f <= t.x && t.x <= 1.f);
-			assert(0.f <= t.y && t.y <= 1.f);
-			assert(0.f <= t.z && t.z <= 1.f);
-			vertices.push_back({
-			    .m_Position          = { v[0], v[1], v[2] },
-			    .m_Color             = { 1.f, 1.f, 1.f },
-			    .m_TextureCoordinate = { t.x, t.y },
-			});
-		}
+		const std::span<aiVector3D> meshVertices{ mesh->mVertices,
+												  mesh->mNumVertices };
+		const std::span<aiVector3D> meshTextureCoords{ mesh->mTextureCoords[0],
+													   mesh->mNumVertices };
+
+		constexpr auto TransformFn = [](const auto& zipElement) {
+			const auto& [vertex, textureCoord] = zipElement;
+			assert(0.F <= textureCoord.x && textureCoord.x <= 1.F);
+			assert(0.F <= textureCoord.y && textureCoord.y <= 1.F);
+			assert(0.F <= textureCoord.z && textureCoord.z <= 1.F);
+			return Vertex{
+				.Position          = { vertex[0], vertex[1], vertex[2] },
+				.Color             = { 1.F, 1.F, 1.F },
+				.TextureCoordinate = { textureCoord.x, textureCoord.y },
+			};
+		};
+		std::ranges::transform(
+			std::ranges::views::zip(meshVertices, meshTextureCoords),
+			std::back_inserter(vertices), TransformFn);
 
 		const std::span meshFaces{ mesh->mFaces, mesh->mNumFaces };
 		for (const aiFace& face : meshFaces)
@@ -137,23 +142,23 @@ void ModelManager::LoadModel(std::string modelName,
 	m_Device.unmapMemory(indexStagingMemory);
 	m_Device.unmapMemory(vertexStagingMemory);
 
-	const auto [vertexBuffer, vertexBufferMemory] = createDeviceBuffer(
+	const auto [vertexBuffer, vertexBufferMemory] = CreateDeviceBuffer(
 	    vertexBufferSize,
 	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
 	                          vk::BufferUsageFlagBits::eVertexBuffer },
 		vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eDeviceLocal },
 	    m_Device, m_PhysicalDevice);
 
-	const auto [indexBuffer, indexBufferMemory] = createDeviceBuffer(
+	const auto [indexBuffer, indexBufferMemory] = CreateDeviceBuffer(
 	    indexBufferSize,
 	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
 	                          vk::BufferUsageFlagBits::eIndexBuffer },
 		vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eDeviceLocal },
 	    m_Device, m_PhysicalDevice);
 
-	copyBuffer(vertexBuffer, vertexStagingBuffer, vertexBufferSize, m_CommandPool,
+	CopyBuffer(vertexBuffer, vertexStagingBuffer, vertexBufferSize, m_CommandPool,
 			   m_Device, m_WorkQueue);
-	copyBuffer(indexBuffer, indexStagingBuffer, indexBufferSize, m_CommandPool,
+	CopyBuffer(indexBuffer, indexStagingBuffer, indexBufferSize, m_CommandPool,
 			   m_Device, m_WorkQueue);
 
 	m_Device.free(indexStagingMemory);
@@ -161,22 +166,20 @@ void ModelManager::LoadModel(std::string modelName,
 	m_Device.free(vertexStagingMemory);
 	m_Device.destroy(vertexStagingBuffer);
 
-	m_LoadedModels.emplace_back(std::move(modelName), vertexCount, vertexBuffer,
+	m_LoadedModels.emplace_back(std::string{ modelName }, vertexCount, vertexBuffer,
 								vertexBufferMemory, indexCount, indexBuffer,
 								indexBufferMemory);
 }
 
-void ModelManager::RenderAllModels(vk::CommandBuffer commandBuffer)
+void ModelManager::RenderAllModels(vk::CommandBuffer commandBuffer) const
 {
-	constexpr vk::DeviceSize offset{ 0 };
+	constexpr vk::DeviceSize Offset{ 0 };
 	for (const Model& model : m_LoadedModels)
 	{
-		commandBuffer.bindVertexBuffers(0, { model.m_VertexBuffer }, { offset });
-		commandBuffer.bindIndexBuffer(model.m_IndexBuffer, 0,
-		                              vk::IndexType::eUint32);
+		commandBuffer.bindVertexBuffers(0, { model.VertexBuffer }, { Offset });
+		commandBuffer.bindIndexBuffer(model.IndexBuffer, 0, vk::IndexType::eUint32);
 
-		commandBuffer.drawIndexed(static_cast<std::uint32_t>(model.m_IndexCount), 1,
-								  0, 0, 0);
+		commandBuffer.drawIndexed(model.IndexCount, 1, 0, 0, 0);
 	}
 }
 
@@ -184,10 +187,10 @@ void ModelManager::UnloadAllModels()
 {
 	for (const Model& model : m_LoadedModels)
 	{
-		m_Device.destroy(model.m_IndexBuffer);
-		m_Device.destroy(model.m_VertexBuffer);
-		m_Device.free(model.m_IndexBufferMemory);
-		m_Device.free(model.m_VertexBufferMemory);
+		m_Device.destroy(model.IndexBuffer);
+		m_Device.destroy(model.VertexBuffer);
+		m_Device.free(model.IndexBufferMemory);
+		m_Device.free(model.VertexBufferMemory);
 	}
 	m_LoadedModels.clear();
 }

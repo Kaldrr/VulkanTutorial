@@ -22,6 +22,9 @@ MainWindow::MainWindow(QWindow* const parent)
 
 QVulkanWindowRenderer* MainWindow::createRenderer()
 {
-    // TODO: fix multisampling
-    return new VulkanRenderer{this, true};
+	constexpr bool MSAAEnabled = true;
+	// This needs to be a raw pointer return
+	// It's ok as we give it a prent, so the MainWindow will take care of managing it
+	// NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
+	return new VulkanRenderer{this, MSAAEnabled};
 }

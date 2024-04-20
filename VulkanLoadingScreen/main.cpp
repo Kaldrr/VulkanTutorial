@@ -2,11 +2,12 @@
 #include <VulkanLoadingScreen/VulkanInstance.h>
 
 #include <QApplication>
-
-#include <fmt/core.h>
+#include <QByteArray>
+#include <QByteArrayList>
 
 namespace
 {
+// NOLINTBEGIN(cert-err58-cpp)
 const QByteArrayList VulkanLayers{
 #ifndef NDEBUG
 	"VK_LAYER_KHRONOS_validation"
@@ -17,8 +18,10 @@ const QByteArrayList VulkanLayers{
 const QByteArrayList VulkanExtensions{
 	"VK_KHR_surface",
 	"VK_KHR_portability_enumeration",
-#ifdef  Q_OS_LINUX
+#ifdef Q_OS_LINUX
 	"VK_KHR_wayland_surface",
+	"VK_KHR_xlib_surface",
+	"VK_KHR_xcb_surface",
 #elif defined(Q_OS_WIN32)
 	"VK_KHR_win32_surface",
 #endif
@@ -26,6 +29,7 @@ const QByteArrayList VulkanExtensions{
 	VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 #endif
 };
+// NOLINTEND(cert-err58-cpp)
 
 // QByteArrayList can't be cast to a const char* :(
 // sizeof(QByteArray) == 24, we need conversions when passing to vulkan
@@ -44,7 +48,7 @@ std::vector<const char*> ToVector(const QByteArrayList& list)
 
 int main(int argc, char** argv)
 {
-	QGuiApplication app{ argc, argv };
+	const QGuiApplication app{ argc, argv };
 	QVulkanInstance qtVulkanInstance{};
 
 	// TODO: Using the built-in Qt Vulkan doesn't work
@@ -53,34 +57,37 @@ int main(int argc, char** argv)
 	[[maybe_unused]] std::optional<VulkanInstance> vulkanInstance{};
 	if (UseExternalVulkan)
 	{
-		VulkanInstance& vulkan = vulkanInstance.emplace();
-
 		const std::vector<const char*> vulkanLayersVector = ToVector(VulkanLayers);
 		const std::vector<const char*> vulkanExtensionsVector =
 		    ToVector(VulkanExtensions);
 
-		vulkan.InitializeVulkanInstance(vulkanLayersVector, vulkanExtensionsVector);
+		VulkanInstance& vulkan =
+			vulkanInstance.emplace(vulkanLayersVector, vulkanExtensionsVector);
 #ifndef NDEBUG
 		vulkan.InitializeDebugMessenger();
 #endif
 		qtVulkanInstance.setVkInstance(vulkan.GetVulkanInstance());
 	}
-	qtVulkanInstance.setApiVersion(QVersionNumber{ 1, 3, 0 });
+
+	qtVulkanInstance.setApiVersion(
+		QVersionNumber{ VK_API_VERSION_MAJOR(VK_HEADER_VERSION_COMPLETE),
+						VK_API_VERSION_MINOR(VK_HEADER_VERSION_COMPLETE),
+						VK_API_VERSION_PATCH(VK_HEADER_VERSION_COMPLETE) });
 	qtVulkanInstance.setExtensions(VulkanExtensions);
 	qtVulkanInstance.setLayers(VulkanLayers);
 	if (!qtVulkanInstance.create())
 	{
-		qFatal("Failed to create Vulkan instance: %d",
-			   qtVulkanInstance.errorCode());
+		qFatal()
+			<< "Failed to create Vulkan instance:" << qtVulkanInstance.errorCode();
 		return -1;
 	}
 	const int returnCode = [&qtVulkanInstance] {
 		try
 		{
-			constexpr QSize startingWindowSize{ 800, 800 };
+			constexpr QSize StartingWindowSize{ 800, 800 };
 			MainWindow window{};
 			window.setVulkanInstance(&qtVulkanInstance);
-			window.resize(startingWindowSize);
+			window.resize(StartingWindowSize);
 			window.show();
 			window.setVisibility(QWindow::Visibility::Windowed);
 
@@ -88,11 +95,11 @@ int main(int argc, char** argv)
 		}
 		catch (const std::exception& e)
 		{
-			qFatal("Fatal error: %s", e.what());
+			qFatal() << "Fatal error:" << e.what();
 		}
 		catch (...)
 		{
-			qFatal("Unknown fatal error");
+			qFatal() << "Unknown fatal error";
 		}
 		return -1;
 	}();

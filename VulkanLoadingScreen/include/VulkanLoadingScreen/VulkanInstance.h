@@ -5,47 +5,39 @@
 #include <optional>
 #include <span>
 
-class VulkanInstance
+class [[nodiscard]] VulkanInstance
 {
 public:
-	VulkanInstance();
+	VulkanInstance(std::span<const char* const> vulkanLayers,
+				   std::span<const char* const> vulkanExtensions);
 	~VulkanInstance() noexcept;
 
-	void InitializeVulkanInstance(
-	    std::span<const char* const> vulkanLayers,
-	    std::span<const char* const> vulkanExtensions);
+	VulkanInstance(const VulkanInstance&)                = delete;
+	VulkanInstance(VulkanInstance&&) noexcept            = delete;
+	VulkanInstance& operator=(const VulkanInstance&)     = delete;
+	VulkanInstance& operator=(VulkanInstance&&) noexcept = delete;
 
 	void InitializeDebugMessenger();
 
-	void InitializeLogicalDevice(
-	    std::span<const char* const> vulkanLayers,
-	    std::span<const char* const> vulkanExtensions);
+	void InitializeLogicalDevice(std::span<const char* const> vulkanLayers,
+								 std::span<const char* const> vulkanExtensions);
 
-	[[nodiscard]] constexpr bool IsVulkanInstanceInitialized()
-		const noexcept
-	{
-		return m_VulkanInstance.has_value();
-	}
-
-	[[nodiscard]] constexpr bool IsDebugMessengerInitialized()
-		const noexcept
+	[[nodiscard]] constexpr bool IsDebugMessengerInitialized() const noexcept
 	{
 		return m_DebugMessenger.has_value();
 	}
 
-	[[nodiscard]] constexpr bool IsLogicalDeviceInitialized()
-		const noexcept
+	[[nodiscard]] constexpr bool IsLogicalDeviceInitialized() const noexcept
 	{
 		return m_LogicalDevice.has_value();
 	}
 
-	[[nodiscard]] constexpr vk::Instance GetVulkanInstance() const
+	[[nodiscard]] constexpr vk::Instance GetVulkanInstance() const noexcept
 	{
-		return m_VulkanInstance.value();
+		return m_VulkanInstance;
 	}
 
-	[[nodiscard]] constexpr vk::DebugUtilsMessengerEXT
-	GetDebugMessenger() const
+	[[nodiscard]] constexpr vk::DebugUtilsMessengerEXT GetDebugMessenger() const
 	{
 		return m_DebugMessenger.value();
 	}
@@ -56,9 +48,9 @@ public:
 	}
 
 private:
-	vk::DynamicLoader m_DynamicLoader{};
+	vk::DynamicLoader m_DynamicLoader;
+	vk::Instance m_VulkanInstance;
 
-	std::optional<vk::Instance> m_VulkanInstance{};
-	std::optional<vk::DebugUtilsMessengerEXT> m_DebugMessenger{};
-	std::optional<vk::Device> m_LogicalDevice{};
+	std::optional<vk::DebugUtilsMessengerEXT> m_DebugMessenger;
+	std::optional<vk::Device> m_LogicalDevice;
 };

@@ -10,41 +10,17 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 
 namespace
 {
-constexpr std::uint32_t VulkanVersion = VK_API_VERSION_1_3;
+constexpr std::uint32_t VulkanVersion = VK_HEADER_VERSION_COMPLETE;
 
 std::unordered_set<std::string> GetSupportedExtensions()
 {
-	VkResult result{};
-
-	/*
-	 * From the link above:
-	 * If `pProperties` is NULL, then the number of extensions properties
-	 * available is returned in `pPropertyCount`.
-	 * 	 * Basically, gets the number of extensions.
-	 */
-	std::uint32_t count = 0;
-
-	result = vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr);
-	if (result != VK_SUCCESS)
-	{
-		// Throw an exception or log the error
-	}
-
-	std::vector<VkExtensionProperties> extensionProperties(count);
-
-	// Get the extensions
-	// Doesn't seem to have VulkanCpp equivalent?
-	result = vkEnumerateInstanceExtensionProperties(nullptr, &count,
-													extensionProperties.data());
-	if (result != VK_SUCCESS)
-	{
-		// Throw an exception or log the error
-	}
+	const std::vector<vk::ExtensionProperties> extensionProperties =
+		vk::enumerateInstanceExtensionProperties();
 
 	std::unordered_set<std::string> extensions;
-	for (auto& extension : extensionProperties)
+	for (const vk::ExtensionProperties& extension : extensionProperties)
 	{
-		extensions.insert(extension.extensionName);
+		extensions.emplace(extension.extensionName);
 	}
 
 	return extensions;
@@ -53,11 +29,11 @@ std::unordered_set<std::string> GetSupportedExtensions()
 struct QueueFamilyIndices
 {
 public:
-	std::optional<std::uint32_t> graphicsFamily{ std::nullopt };
+	std::optional<std::uint32_t> GraphicsFamily{ std::nullopt };
 
 	constexpr bool IsComplete() const noexcept
 	{
-		return graphicsFamily.has_value();
+		return GraphicsFamily.has_value();
 	}
 };
 
@@ -84,18 +60,20 @@ QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice physicalDevice)
 	const std::vector<vk::QueueFamilyProperties> queueFamilies =
 	    physicalDevice.getQueueFamilyProperties();
 
-	for (std::uint32_t i{ 0 };
-		 const vk::QueueFamilyProperties& queueProperties : queueFamilies)
+	for (std::uint32_t idx{ 0 };
+	     const vk::QueueFamilyProperties& queueProperties : queueFamilies)
 	{
 		if (queueProperties.queueFlags &
 		    vk::QueueFlags{ VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT })
 		{
-			queueFamilyIndices.graphicsFamily = i;
+			queueFamilyIndices.GraphicsFamily = idx;
 		}
 
 		if (queueFamilyIndices.IsComplete())
+		{
 			break;
-		++i;
+		}
+		++idx;
 	}
 
 	return queueFamilyIndices;
@@ -103,7 +81,8 @@ QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice physicalDevice)
 
 } // namespace
 
-VulkanInstance::VulkanInstance()
+VulkanInstance::VulkanInstance(const std::span<const char* const> vulkanLayers,
+							   const std::span<const char* const> vulkanExtensions)
 {
 	// Needs to be valid for the lifetime of default dispatcher
 	// destructor unloads the library from memory
@@ -112,7 +91,7 @@ VulkanInstance::VulkanInstance()
 		throw std::runtime_error{ "Failed to dynamically load vulkan library" };
 	}
 
-	const PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr =
+	const auto vkGetInstanceProcAddr =
 	    m_DynamicLoader.getProcAddress<PFN_vkGetInstanceProcAddr>(
 	        "vkGetInstanceProcAddr");
 	if (vkGetInstanceProcAddr == nullptr)
@@ -122,6 +101,35 @@ VulkanInstance::VulkanInstance()
 		};
 	}
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(vkGetInstanceProcAddr);
+
+	constexpr std::uint32_t ApplicationVersion = 1;
+	constexpr vk::ApplicationInfo AppInfo{ "VulkanLoadingScreen",
+										   ApplicationVersion, "", 0,
+										   VulkanVersion };
+
+	const std::unordered_set<std::string> supportedExtensions =
+		GetSupportedExtensions();
+	for (const char* const extension : vulkanExtensions)
+	{
+		if (!supportedExtensions.contains(extension))
+		{
+			fmt::println(stderr, "Extension {} is not supported", extension);
+			throw std::runtime_error{ "Unsupported extension" };
+		}
+	}
+
+	const vk::InstanceCreateInfo createInfo{
+		vk::InstanceCreateFlags{},
+		&AppInfo,
+		static_cast<std::uint32_t>(vulkanLayers.size()),
+		vulkanLayers.data(),
+		static_cast<std::uint32_t>(vulkanExtensions.size()),
+		vulkanExtensions.data()
+	};
+
+	m_VulkanInstance = vk::createInstance(createInfo, nullptr);
+
+	VULKAN_HPP_DEFAULT_DISPATCHER.init(m_VulkanInstance);
 }
 
 VulkanInstance::~VulkanInstance() noexcept
@@ -131,100 +139,50 @@ VulkanInstance::~VulkanInstance() noexcept
 		m_LogicalDevice->destroy();
 	}
 
-	if (m_VulkanInstance.has_value())
+	if (m_DebugMessenger.has_value())
 	{
-		if (m_DebugMessenger.has_value())
-		{
-			m_VulkanInstance->destroy(*m_DebugMessenger);
-		}
-		m_VulkanInstance->destroy();
+		m_VulkanInstance.destroy(*m_DebugMessenger);
 	}
-}
-
-void VulkanInstance::InitializeVulkanInstance(
-    const std::span<const char* const> vulkanLayers,
-    const std::span<const char* const> vulkanExtensions)
-{
-	constexpr std::uint32_t ApplicationVersion = 1;
-	constexpr vk::ApplicationInfo appInfo{ "VulkanLoadingScreen",
-										   ApplicationVersion, "", 0,
-										   VulkanVersion };
-
-	const std::unordered_set<std::string> extensions = GetSupportedExtensions();
-	for (const char* const extension : vulkanExtensions)
-	{
-		if (!extensions.contains(extension))
-		{
-			fmt::println(stderr, "Extension {} is not supported", extension);
-			throw std::runtime_error{"Unsupported extension"};
-		}
-	}
-
-	const vk::InstanceCreateInfo createInfo{
-		vk::InstanceCreateFlags{},
-		&appInfo,
-		static_cast<std::uint32_t>(vulkanLayers.size()),
-		vulkanLayers.data(),
-		static_cast<std::uint32_t>(vulkanExtensions.size()),
-		vulkanExtensions.data()
-	};
-
-	m_VulkanInstance = vk::createInstance(createInfo, nullptr);
-
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(*m_VulkanInstance);
+	m_VulkanInstance.destroy();
 }
 
 void VulkanInstance::InitializeDebugMessenger()
 {
-	if (!IsVulkanInstanceInitialized())
-	{
-		fmt::print(stderr, "{} called with uninitialized VulkanInstance",
-		           __FUNCTION__);
-		return;
-	}
+	constexpr vk::DebugUtilsMessengerCreateFlagsEXT MessengerCreateFlags{};
 
-	constexpr vk::DebugUtilsMessengerCreateFlagsEXT messengerCreateFlags{};
+	constexpr vk::DebugUtilsMessageSeverityFlagsEXT MessageSeverityFlags =
+	    vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
+	    vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
+	    vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
 
-	constexpr vk::DebugUtilsMessageSeverityFlagsEXT messageSeverityFlags =
-		vk::DebugUtilsMessageSeverityFlagBitsEXT::eInfo |
-		vk::DebugUtilsMessageSeverityFlagBitsEXT::eWarning |
-		vk::DebugUtilsMessageSeverityFlagBitsEXT::eError;
-
-	constexpr vk::DebugUtilsMessageTypeFlagsEXT messageTypeFlags =
+	constexpr vk::DebugUtilsMessageTypeFlagsEXT MessageTypeFlags =
 	    vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
 	    vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
 	    vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance;
 
 	const vk::DebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo{
-		messengerCreateFlags, messageSeverityFlags, messageTypeFlags,
+		MessengerCreateFlags, MessageSeverityFlags, MessageTypeFlags,
 		&DebugCallback, nullptr
 	};
 	m_DebugMessenger =
-		m_VulkanInstance->createDebugUtilsMessengerEXT(debugMessengerCreateInfo);
+		m_VulkanInstance.createDebugUtilsMessengerEXT(debugMessengerCreateInfo);
 }
 
 void VulkanInstance::InitializeLogicalDevice(
     const std::span<const char* const> vulkanLayers,
     const std::span<const char* const> vulkanExtensions)
 {
-	if (!IsVulkanInstanceInitialized())
-	{
-		fmt::print(stderr, "{} called with uninitialized VulkanInstance",
-		           __FUNCTION__);
-		return;
-	}
-
 	const std::vector<vk::PhysicalDevice> physicalDevices =
-	    m_VulkanInstance->enumeratePhysicalDevices();
+		m_VulkanInstance.enumeratePhysicalDevices();
 	if (physicalDevices.empty())
 	{
 		throw std::runtime_error{ "Failed to find any vulkan capable device!" };
 	}
 
 	// TODO: make some smarter device selection?
-	constexpr std::size_t deviceIndex = 0;
+	constexpr std::size_t DeviceIndex = 0;
 
-	const vk::PhysicalDevice& defaultDevice = physicalDevices.at(deviceIndex);
+	const vk::PhysicalDevice& defaultDevice = physicalDevices.at(DeviceIndex);
 
 	const vk::PhysicalDeviceProperties deviceProperties{
 		defaultDevice.getProperties()
@@ -237,13 +195,15 @@ void VulkanInstance::InitializeLogicalDevice(
 	{
 		throw std::runtime_error{ "Failed to find expected queues on the device!" };
 	}
-	constexpr float QueuePriority{ 1.f };
+	constexpr float QueuePriority{ 1.F };
+
+	// Optional value is checked in 'IsComplete' member function
 	const vk::DeviceQueueCreateInfo deviceQueueCreateInfo{
-		vk::DeviceQueueCreateFlags{}, queueIndices.graphicsFamily.value(), 1,
+		vk::DeviceQueueCreateFlags{}, queueIndices.GraphicsFamily.value(), 1,
 		&QueuePriority
 	};
 
-	constexpr vk::PhysicalDeviceFeatures deviceFeatures{};
+	constexpr vk::PhysicalDeviceFeatures DeviceFeatures{};
 	const vk::DeviceCreateInfo deviceInfo{
 		vk::DeviceCreateFlags{},
 		1,
@@ -252,7 +212,7 @@ void VulkanInstance::InitializeLogicalDevice(
 		vulkanLayers.data(),
 		static_cast<std::uint32_t>(vulkanExtensions.size()),
 		vulkanExtensions.data(),
-		&deviceFeatures
+		&DeviceFeatures
 	};
 
 	m_LogicalDevice = defaultDevice.createDevice(deviceInfo);
