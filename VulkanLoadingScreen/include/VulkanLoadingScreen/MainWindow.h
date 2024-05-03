@@ -5,9 +5,9 @@
 
 class [[nodiscard]] MainWindow : public QVulkanWindow
 {
-// NOLINTBEGIN
+	// NOLINTBEGIN
 	Q_OBJECT
-// NOLINTEND
+	// NOLINTEND
 public:
 	MainWindow();
 	explicit MainWindow(QWindow* parent);

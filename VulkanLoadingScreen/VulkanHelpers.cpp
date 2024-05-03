@@ -8,88 +8,79 @@ vk::RenderPass CreateRenderPass(const vk::Device device,
 	const std::array attachments{
 		// Color attachment
 		vk::AttachmentDescription{
-		    vk::AttachmentDescriptionFlags{},
-			static_cast<vk::Format>(colorFormat),
-		    static_cast<vk::SampleCountFlagBits>(sampleCount),
-		    vk::AttachmentLoadOp::eClear,
-		    vk::AttachmentStoreOp::eStore,
-		    vk::AttachmentLoadOp::eDontCare,
-		    vk::AttachmentStoreOp::eDontCare,
-		    vk::ImageLayout::eUndefined,
-		    vk::ImageLayout::eColorAttachmentOptimal,
+			.format         = static_cast<vk::Format>(colorFormat),
+			.samples        = static_cast<vk::SampleCountFlagBits>(sampleCount),
+			.loadOp         = vk::AttachmentLoadOp::eClear,
+			.storeOp        = vk::AttachmentStoreOp::eStore,
+			.stencilLoadOp  = vk::AttachmentLoadOp::eDontCare,
+			.stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+			.initialLayout  = vk::ImageLayout::eUndefined,
+			.finalLayout    = vk::ImageLayout::eColorAttachmentOptimal,
 		},
 		// Depth stencil attachment
 		vk::AttachmentDescription{
-		    vk::AttachmentDescriptionFlags{},
-			static_cast<vk::Format>(depthFormat),
-		    static_cast<vk::SampleCountFlagBits>(sampleCount),
-		    vk::AttachmentLoadOp::eClear,
-		    vk::AttachmentStoreOp::eDontCare,
-		    vk::AttachmentLoadOp::eDontCare,
-		    vk::AttachmentStoreOp::eDontCare,
-		    vk::ImageLayout::eUndefined,
-		    vk::ImageLayout::eDepthStencilAttachmentOptimal,
+			.format         = static_cast<vk::Format>(depthFormat),
+			.samples        = static_cast<vk::SampleCountFlagBits>(sampleCount),
+			.loadOp         = vk::AttachmentLoadOp::eClear,
+			.storeOp        = vk::AttachmentStoreOp::eDontCare,
+			.stencilLoadOp  = vk::AttachmentLoadOp::eDontCare,
+			.stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+			.initialLayout  = vk::ImageLayout::eUndefined,
+			.finalLayout    = vk::ImageLayout::eDepthStencilAttachmentOptimal,
 		},
 		// MSAA attachment
 		vk::AttachmentDescription{
-		    vk::AttachmentDescriptionFlags{},
-			static_cast<vk::Format>(colorFormat),
-		    vk::SampleCountFlagBits::e1,
-		    vk::AttachmentLoadOp::eDontCare,
-		    vk::AttachmentStoreOp::eDontCare,
-		    vk::AttachmentLoadOp::eDontCare,
-		    vk::AttachmentStoreOp::eDontCare,
-		    vk::ImageLayout::eUndefined,
-		    vk::ImageLayout::ePresentSrcKHR,
+			.format         = static_cast<vk::Format>(colorFormat),
+			.samples        = vk::SampleCountFlagBits::e1,
+			.loadOp         = vk::AttachmentLoadOp::eDontCare,
+			.storeOp        = vk::AttachmentStoreOp::eDontCare,
+			.stencilLoadOp  = vk::AttachmentLoadOp::eDontCare,
+			.stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+			.initialLayout  = vk::ImageLayout::eUndefined,
+			.finalLayout    = vk::ImageLayout::ePresentSrcKHR,
 		},
 	};
 
 	constexpr vk::AttachmentReference ColorAttachmentRef{
-		0U, vk::ImageLayout::eColorAttachmentOptimal
+		.attachment = 0U,
+		.layout     = vk::ImageLayout::eColorAttachmentOptimal,
 	};
 	constexpr vk::AttachmentReference DepthAttachmentRef{
-		1U, vk::ImageLayout::eDepthStencilAttachmentOptimal
+		.attachment = 1U,
+		.layout     = vk::ImageLayout::eDepthStencilAttachmentOptimal,
 	};
 	constexpr vk::AttachmentReference ColorAttachmentResolveRef{
-		2U, vk::ImageLayout::eColorAttachmentOptimal
+		.attachment = 2U,
+		.layout     = vk::ImageLayout::eColorAttachmentOptimal,
 	};
 
 	const vk::SubpassDescription subpassDescription{
-		vk::SubpassDescriptionFlags{},
-		vk::PipelineBindPoint::eGraphics,
-		0,
-		nullptr,
-		1U,
-		&ColorAttachmentRef,
-		&ColorAttachmentResolveRef,
-		&DepthAttachmentRef,
-		0,
-		nullptr
+		.pipelineBindPoint       = vk::PipelineBindPoint::eGraphics,
+		.colorAttachmentCount    = 1U,
+		.pColorAttachments       = &ColorAttachmentRef,
+		.pResolveAttachments     = &ColorAttachmentResolveRef,
+		.pDepthStencilAttachment = &DepthAttachmentRef,
 	};
 
 	constexpr vk::SubpassDependency Dependency{
-		VK_SUBPASS_EXTERNAL,
-		0U,
-		vk::PipelineStageFlags{ vk::PipelineStageFlagBits::eColorAttachmentOutput |
-								vk::PipelineStageFlagBits::eEarlyFragmentTests },
-		vk::PipelineStageFlags{ vk::PipelineStageFlagBits::eColorAttachmentOutput |
-								vk::PipelineStageFlagBits::eEarlyFragmentTests },
-		vk::AccessFlags{},
-		vk::AccessFlags{ vk::AccessFlagBits::eColorAttachmentWrite |
-						 vk::AccessFlagBits::eDepthStencilAttachmentWrite }
+		.srcSubpass   = VK_SUBPASS_EXTERNAL,
+		.dstSubpass   = 0U,
+		.srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+						vk::PipelineStageFlagBits::eEarlyFragmentTests,
+		.dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+						vk::PipelineStageFlagBits::eEarlyFragmentTests,
+		.dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite |
+						 vk::AccessFlagBits::eDepthStencilAttachmentWrite,
 	};
 
-	const vk::RenderPassCreateInfo renderPassInfo{ vk::RenderPassCreateFlags{},
-												   static_cast<std::uint32_t>(
-													   size(attachments)),
-												   attachments.data(),
-												   1U,
-												   &subpassDescription,
-												   1U,
-												   &Dependency,
-												   nullptr };
-
-	return device.createRenderPass(renderPassInfo);
+	return device.createRenderPass(vk::RenderPassCreateInfo{
+		.attachmentCount = static_cast<std::uint32_t>(size(attachments)),
+		.pAttachments    = attachments.data(),
+		.subpassCount    = 1U,
+		.pSubpasses      = &subpassDescription,
+		.dependencyCount = 1U,
+		.pDependencies   = &Dependency,
+	});
 }
 
 std::tuple<vk::PipelineColorBlendStateCreateInfo, vk::PipelineLayout>
@@ -99,33 +90,31 @@ CreatePipelineLayoutInfo(const vk::Device device,
 	// Band-aid as we need to return address outside of the
 	// function...
 	constexpr static vk::PipelineColorBlendAttachmentState ColorBlendState{
-		VK_FALSE,
-		vk::BlendFactor::eOne,
-		vk::BlendFactor::eZero,
-		vk::BlendOp::eAdd,
-		vk::BlendFactor::eOne,
-		vk::BlendFactor::eZero,
-		vk::BlendOp::eAdd,
-		vk::ColorComponentFlags{
+		.blendEnable         = VK_FALSE,
+		.srcColorBlendFactor = vk::BlendFactor::eOne,
+		.dstColorBlendFactor = vk::BlendFactor::eZero,
+		.colorBlendOp        = vk::BlendOp::eAdd,
+		.srcAlphaBlendFactor = vk::BlendFactor::eOne,
+		.dstAlphaBlendFactor = vk::BlendFactor::eZero,
+		.alphaBlendOp        = vk::BlendOp::eAdd,
+		.colorWriteMask =
 			vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-			vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA },
+			vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA,
 	};
 
-	constexpr vk::PipelineColorBlendStateCreateInfo ColorBlendCreateInfo{
-		vk::PipelineColorBlendStateCreateFlags{},
-		VK_FALSE,
-		vk::LogicOp::eCopy,
-		1U,
-		&ColorBlendState,
-		std::array<float, 4>{ 0.F, 0.F, 0.F, 0.F },
+	return {
+		vk::PipelineColorBlendStateCreateInfo{
+			.logicOpEnable   = VK_FALSE,
+			.logicOp         = vk::LogicOp::eCopy,
+			.attachmentCount = 1U,
+			.pAttachments    = &ColorBlendState,
+			.blendConstants  = std::array<float, 4>{ 0.F, 0.F, 0.F, 0.F },
+		},
+		device.createPipelineLayout(vk::PipelineLayoutCreateInfo{
+			.setLayoutCount = 1U,
+			.pSetLayouts    = &descriptorSetLayout,
+		}),
 	};
-
-	const vk::PipelineLayoutCreateInfo pipelineLayoutCreateInfo{
-		vk::PipelineLayoutCreateFlags{}, 1U, &descriptorSetLayout, 0U, nullptr,
-	};
-
-	return { ColorBlendCreateInfo,
-			 device.createPipelineLayout(pipelineLayoutCreateInfo) };
 }
 
 std::uint32_t FindMemoryType(const vk::PhysicalDevice physicalDevice,
@@ -154,22 +143,21 @@ std::tuple<vk::Buffer, vk::DeviceMemory> CreateDeviceBuffer(
     const vk::Device device,
     const vk::PhysicalDevice physicalDevie)
 {
-	const vk::BufferCreateInfo bufferInfo{
-		vk::BufferCreateFlags{},     bufferSize, bufferFlags,
-		vk::SharingMode::eExclusive, 0,          nullptr,
-	};
-
-	const vk::Buffer deviceBuffer = device.createBuffer(bufferInfo);
+	const vk::Buffer deviceBuffer = device.createBuffer(vk::BufferCreateInfo{
+		.size        = bufferSize,
+		.usage       = bufferFlags,
+		.sharingMode = vk::SharingMode::eExclusive,
+	});
 
 	const vk::MemoryRequirements memoryRequirements =
 		device.getBufferMemoryRequirements(deviceBuffer);
 
-	const vk::MemoryAllocateInfo allocInfo{
-		vk::DeviceSize{ memoryRequirements.size },
-		FindMemoryType(physicalDevie, memoryFlags,
-					   memoryRequirements.memoryTypeBits),
-	};
-	const vk::DeviceMemory deviceMemory = device.allocateMemory(allocInfo);
+	const vk::DeviceMemory deviceMemory =
+		device.allocateMemory(vk::MemoryAllocateInfo{
+			.allocationSize  = vk::DeviceSize{ memoryRequirements.size },
+			.memoryTypeIndex = FindMemoryType(physicalDevie, memoryFlags,
+											  memoryRequirements.memoryTypeBits),
+		});
 	device.bindBufferMemory(deviceBuffer, deviceMemory, vk::DeviceSize{ 0 });
 
 	return std::tuple{ deviceBuffer, deviceMemory };
@@ -186,33 +174,31 @@ void CopyBuffer(const vk::Buffer dstBuffer,
 	const vk::CommandBuffer commandBuffer =
 		BeginSingleTimeCommands(device, commandPool);
 	commandBuffer.copyBuffer(srcBuffer, dstBuffer,
-							 vk::BufferCopy{ vk::DeviceSize{ 0 },
-											 vk::DeviceSize{ 0 },
-											 vk::DeviceSize{ size } });
+							 vk::BufferCopy{
+								 .srcOffset = vk::DeviceSize{ 0 },
+								 .dstOffset = vk::DeviceSize{ 0 },
+								 .size      = vk::DeviceSize{ size },
+							 });
 	EndSingleTimeCommands(commandBuffer, graphicsQueue);
 }
 
 vk::CommandBuffer BeginSingleTimeCommands(const vk::Device device,
 										  const vk::CommandPool commandPool)
 {
-	const vk::CommandBufferAllocateInfo allocInfo{
-		commandPool,
-		vk::CommandBufferLevel::ePrimary,
-		1,
-		nullptr,
-	};
-
 	const std::vector<vk::CommandBuffer> commandBuffers =
-		device.allocateCommandBuffers(allocInfo);
-	assert(commandBuffers.size() == 1);
-	constexpr vk::CommandBufferBeginInfo BeginInfo{
-		vk::CommandBufferUsageFlags{
-			vk::CommandBufferUsageFlagBits::eOneTimeSubmit },
-		nullptr, nullptr
-	};
+		device.allocateCommandBuffers(vk::CommandBufferAllocateInfo{
+			.commandPool        = commandPool,
+			.level              = vk::CommandBufferLevel::ePrimary,
+			.commandBufferCount = 1,
+		});
 
+	assert(commandBuffers.size() == 1);
 	vk::CommandBuffer commandBuffer = commandBuffers.at(0);
-	commandBuffer.begin(BeginInfo);
+
+	commandBuffer.begin(vk::CommandBufferBeginInfo{
+		.flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+	});
+
 	return commandBuffer;
 }
 
@@ -221,9 +207,12 @@ void EndSingleTimeCommands(const vk::CommandBuffer commandBuffer,
 {
 	commandBuffer.end();
 
-	const std::array<vk::SubmitInfo, 1> bufferSubmitInfo{ vk::SubmitInfo{
-		0, nullptr, nullptr, 1, &commandBuffer, 0, nullptr, nullptr } };
-	queue.submit(bufferSubmitInfo);
+	queue.submit(vk::ArrayProxy{
+		vk::SubmitInfo{
+			.commandBufferCount = 1,
+			.pCommandBuffers    = &commandBuffer,
+		},
+	});
 	queue.waitIdle();
 }
 
@@ -238,18 +227,20 @@ void CopyBufferToImage(const vk::Buffer buffer,
 	const vk::CommandBuffer commandBuffer =
 		BeginSingleTimeCommands(device, commandPool);
 
-	const vk::BufferImageCopy region{ vk::DeviceSize{ 0 },
-									  0U,
-									  0U,
-									  vk::ImageSubresourceLayers{
-										  vk::ImageAspectFlags{
-											  vk::ImageAspectFlagBits::eColor },
-										  0U,
-										  0U,
-										  1U,
-									  },
-									  vk::Offset3D{ 0U, 0U, 0U },
-									  vk::Extent3D{ width, height, 1U } };
+	const vk::BufferImageCopy region{
+		.bufferOffset      = vk::DeviceSize{ 0 },
+		.bufferRowLength   = 0U,
+		.bufferImageHeight = 0U,
+		.imageSubresource =
+			vk::ImageSubresourceLayers{
+				.aspectMask     = vk::ImageAspectFlagBits::eColor,
+				.mipLevel       = 0U,
+				.baseArrayLayer = 0U,
+				.layerCount     = 1U,
+			},
+		.imageOffset = vk::Offset3D{ .x = 0U, .y = 0U, .z = 0U },
+		.imageExtent = vk::Extent3D{ .width = width, .height = height, .depth = 1U }
+	};
 	commandBuffer.copyBufferToImage(buffer, image,
 									vk::ImageLayout::eTransferDstOptimal,
 									vk::ArrayProxy{ region });
@@ -269,17 +260,19 @@ void TransitionImageLayout(const vk::Image image,
 		BeginSingleTimeCommands(device, commandPool);
 
 	vk::ImageMemoryBarrier barrier{
-		vk::AccessFlags{},
-		vk::AccessFlags{},
-		oldLayout,
-		newLayout,
-		VK_QUEUE_FAMILY_IGNORED,
-		VK_QUEUE_FAMILY_IGNORED,
-		image,
-		vk::ImageSubresourceRange{
-			vk::ImageAspectFlags{ vk::ImageAspectFlagBits::eColor }, 0U, 1U, 0U,
-			1U },
-		nullptr,
+		.oldLayout           = oldLayout,
+		.newLayout           = newLayout,
+		.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+		.image               = image,
+		.subresourceRange =
+			vk::ImageSubresourceRange{
+				.aspectMask     = vk::ImageAspectFlagBits::eColor,
+				.baseMipLevel   = 0U,
+				.levelCount     = 1U,
+				.baseArrayLayer = 0U,
+				.layerCount     = 1U,
+			},
 	};
 
 	vk::PipelineStageFlags sourceStage{};

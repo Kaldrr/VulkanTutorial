@@ -22,11 +22,21 @@ constexpr std::uint32_t ImportFlags =
     aiProcess_RemoveRedundantMaterials | aiProcess_FindInvalidData |
     aiProcess_GenUVCoords | aiProcess_OptimizeMeshes | aiProcess_OptimizeGraph |
     aiProcess_FlipUVs;
+
+template <typename... Functors>
+// NOLINTNEXTLINE(fuchsia-multiple-inheritance)
+struct [[nodiscard]] Overload : Functors...
+{
+    using Functors::operator()...;
+};
+
+template <typename... Functors>
+Overload(Functors...) -> Overload<Functors...>;
 } // namespace
 
 ModelManager::ModelManager()
 {
-    Assimp::DefaultLogger::create("AssimpLog.txt", Assimp::Logger::VERBOSE);
+	Assimp::DefaultLogger::create("AssimpLog.txt", Assimp::Logger::VERBOSE);
 }
 
 ModelManager::~ModelManager() noexcept
@@ -63,19 +73,44 @@ void ModelManager::LoadModel(const std::string_view modelName,
 	}
 
 	const std::span sceneMeshes{ scene->mMeshes, scene->mNumMeshes };
+
+	// Reduce with different types is difficult D:
+
 	const std::uint32_t vertexCount =
-		std::accumulate(begin(sceneMeshes), end(sceneMeshes), 0U,
-						[](const std::uint32_t lhs, const aiMesh* const mesh) {
-							return lhs + mesh->mNumVertices;
-						});
+		std::reduce(begin(sceneMeshes), end(sceneMeshes), 0U,
+					Overload{
+						[](const aiMesh* const lhs, const std::uint32_t rhs) {
+							return lhs->mNumVertices + rhs;
+						},
+						[](const std::uint32_t lhs, const aiMesh* const rhs) {
+							return lhs + rhs->mNumVertices;
+						},
+						[](const std::uint32_t lhs, const std::uint32_t rhs) {
+							return lhs + rhs;
+						},
+						[](const aiMesh* const lhs, const aiMesh* const rhs) {
+							return lhs->mNumVertices + rhs->mNumVertices;
+						},
+					});
 	const std::uint32_t indexCount =
-		std::accumulate(begin(sceneMeshes), end(sceneMeshes), 0U,
-						[](const std::uint32_t lhs, const aiMesh* const mesh) {
-							// aiProcess_Triangulate -> all meshes are triangles
-							return lhs + mesh->mNumFaces * 3;
-						});
+		std::reduce(begin(sceneMeshes), end(sceneMeshes), 0U,
+					Overload{
+						[](const aiMesh* const lhs, const std::uint32_t rhs) {
+							return lhs->mNumFaces * 3 + rhs;
+						},
+						[](const std::uint32_t lhs, const aiMesh* const rhs) {
+							return lhs + rhs->mNumFaces * 3;
+						},
+						[](const std::uint32_t lhs, const std::uint32_t rhs) {
+							return lhs + rhs;
+						},
+						[](const aiMesh* const lhs, const aiMesh* const rhs) {
+							return lhs->mNumFaces * 3 + rhs->mNumFaces * 3;
+						},
+					});
+
 	const vk::DeviceSize vertexBufferSize =
-	    static_cast<vk::DeviceSize>(vertexCount) * sizeof(Vertex);
+		static_cast<vk::DeviceSize>(vertexCount) * sizeof(Vertex);
 	const vk::DeviceSize indexBufferSize =
 		static_cast<vk::DeviceSize>(indexCount) * sizeof(std::uint32_t);
 
@@ -93,7 +128,8 @@ void ModelManager::LoadModel(const std::string_view modelName,
 								 vk::MemoryPropertyFlagBits::eHostCoherent },
 		m_Device, m_PhysicalDevice);
 
-	// Apparently the copy operations need to be done in one go always?
+	// Apparently the copy operations need to be done in one go
+	// always?
 	std::vector<Vertex> vertices{};
 	vertices.reserve(vertexCount);
 	std::vector<unsigned int> indices{};
@@ -130,8 +166,8 @@ void ModelManager::LoadModel(const std::string_view modelName,
 	}
 
 	void* const vertexPtr =
-	    m_Device.mapMemory(vertexStagingMemory, vk::DeviceSize{ 0 },
-	                       vertexBufferSize, vk::MemoryMapFlags{});
+		m_Device.mapMemory(vertexStagingMemory, vk::DeviceSize{ 0 },
+						   vertexBufferSize, vk::MemoryMapFlags{});
 	void* const indexPtr =
 		m_Device.mapMemory(indexStagingMemory, vk::DeviceSize{ 0 }, indexBufferSize,
 						   vk::MemoryMapFlags{});
@@ -143,18 +179,18 @@ void ModelManager::LoadModel(const std::string_view modelName,
 	m_Device.unmapMemory(vertexStagingMemory);
 
 	const auto [vertexBuffer, vertexBufferMemory] = CreateDeviceBuffer(
-	    vertexBufferSize,
-	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
-	                          vk::BufferUsageFlagBits::eVertexBuffer },
+		vertexBufferSize,
+		vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
+							  vk::BufferUsageFlagBits::eVertexBuffer },
 		vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eDeviceLocal },
-	    m_Device, m_PhysicalDevice);
+		m_Device, m_PhysicalDevice);
 
 	const auto [indexBuffer, indexBufferMemory] = CreateDeviceBuffer(
-	    indexBufferSize,
-	    vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
-	                          vk::BufferUsageFlagBits::eIndexBuffer },
+		indexBufferSize,
+		vk::BufferUsageFlags{ vk::BufferUsageFlagBits::eTransferDst |
+							  vk::BufferUsageFlagBits::eIndexBuffer },
 		vk::MemoryPropertyFlags{ vk::MemoryPropertyFlagBits::eDeviceLocal },
-	    m_Device, m_PhysicalDevice);
+		m_Device, m_PhysicalDevice);
 
 	CopyBuffer(vertexBuffer, vertexStagingBuffer, vertexBufferSize, m_CommandPool,
 			   m_Device, m_WorkQueue);

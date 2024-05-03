@@ -15,33 +15,45 @@ struct Vertex
 	static_assert(sizeof(QVector2D) == sizeof(std::array<float, 2>));
 	static_assert(sizeof(QVector3D) == sizeof(std::array<float, 3>));
 
-	[[nodiscard]] constexpr static vk::VertexInputBindingDescription
+	[[nodiscard]] consteval static vk::VertexInputBindingDescription
 	GetBindingDescription() noexcept
 	{
 		constexpr vk::VertexInputBindingDescription BindingDescription{
-			0U, sizeof(Vertex), vk::VertexInputRate::eVertex
+			.binding   = 0U,
+			.stride    = sizeof(Vertex),
+			.inputRate = vk::VertexInputRate::eVertex
 		};
 
 		return BindingDescription;
 	}
 
-	[[nodiscard]] static auto GetAttributeDescriptions() noexcept
+	[[nodiscard]] consteval static auto GetAttributeDescriptions() noexcept
 	{
-		const static std::array<vk::VertexInputAttributeDescription, 3>
+		constexpr std::array<vk::VertexInputAttributeDescription, 3>
 			AttributeDescriptions{
 			    // Position description
-				vk::VertexInputAttributeDescription{ 0, 0,
-													 vk::Format::eR32G32B32Sfloat,
-													 offsetof(Vertex, Position) },
+				vk::VertexInputAttributeDescription{
+					.location = 0,
+					.binding  = 0,
+					.format   = vk::Format::eR32G32B32Sfloat,
+					.offset   = offsetof(Vertex, Position),
+				},
 			    // Color description
 			    vk::VertexInputAttributeDescription{
-					1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, Color) },
+					.location = 1,
+					.binding  = 0,
+					.format   = vk::Format::eR32G32B32Sfloat,
+					.offset   = offsetof(Vertex, Color),
+				},
 			    // Texture description
 			    vk::VertexInputAttributeDescription{
-					2, 0, vk::Format::eR32G32Sfloat,
-					offsetof(Vertex, TextureCoordinate) },
+					.location = 2,
+					.binding  = 0,
+					.format   = vk::Format::eR32G32Sfloat,
+					.offset   = offsetof(Vertex, TextureCoordinate),
+				},
 		    };
 
-		return std::span{ AttributeDescriptions };
+		return AttributeDescriptions;
 	}
 };

@@ -44,8 +44,18 @@ target_link_libraries(
 target_include_directories(VulkanLoadingScreen PUBLIC include
                                                       ${VULKAN_INCLUDE_DIRS})
 
-target_compile_definitions(VulkanLoadingScreen
-                           PRIVATE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1)
+target_compile_definitions(
+  VulkanLoadingScreen PRIVATE VULKAN_HPP_DISPATCH_LOADER_DYNAMIC=1
+                              VULKAN_HPP_NO_CONSTRUCTORS)
+
+if(LINUX)
+  target_compile_definitions(
+    VulkanLoadingScreen PRIVATE VK_USE_PLATFORM_WAYLAND_KHR
+                                VK_USE_PLATFORM_XCB_KHR)
+elseif(WIN32)
+  target_compile_definitions(VulkanLoadingScreen
+                             PRIVATE VK_USE_PLATFORM_WIN32_KHR)
+endif()
 
 set_target_properties(VulkanLoadingScreen PROPERTIES WIN32_EXECUTABLE ON
                                                      MACOSX_BUNDLE ON)

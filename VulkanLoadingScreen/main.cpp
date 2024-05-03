@@ -19,9 +19,8 @@ const QByteArrayList VulkanExtensions{
 	"VK_KHR_surface",
 	"VK_KHR_portability_enumeration",
 #ifdef Q_OS_LINUX
-	"VK_KHR_wayland_surface",
-	"VK_KHR_xlib_surface",
 	"VK_KHR_xcb_surface",
+	"VK_KHR_wayland_surface",
 #elif defined(Q_OS_WIN32)
 	"VK_KHR_win32_surface",
 #endif
@@ -57,12 +56,8 @@ int main(int argc, char** argv)
 	[[maybe_unused]] std::optional<VulkanInstance> vulkanInstance{};
 	if (UseExternalVulkan)
 	{
-		const std::vector<const char*> vulkanLayersVector = ToVector(VulkanLayers);
-		const std::vector<const char*> vulkanExtensionsVector =
-		    ToVector(VulkanExtensions);
-
-		VulkanInstance& vulkan =
-			vulkanInstance.emplace(vulkanLayersVector, vulkanExtensionsVector);
+		VulkanInstance& vulkan = vulkanInstance.emplace(ToVector(VulkanLayers),
+														ToVector(VulkanExtensions));
 #ifndef NDEBUG
 		vulkan.InitializeDebugMessenger();
 #endif

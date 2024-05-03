@@ -19,8 +19,8 @@ public:
 
 	void InitializeDebugMessenger();
 
-	void InitializeLogicalDevice(std::span<const char* const> vulkanLayers,
-								 std::span<const char* const> vulkanExtensions);
+	void InitializeLogicalDevice(std::span<const char* const> deviceLayers,
+								 std::span<const char* const> deviceExtensions);
 
 	[[nodiscard]] constexpr bool IsDebugMessengerInitialized() const noexcept
 	{
