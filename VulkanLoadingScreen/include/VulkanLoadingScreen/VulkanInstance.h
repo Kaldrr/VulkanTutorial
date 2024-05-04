@@ -19,38 +19,35 @@ public:
 
 	void InitializeDebugMessenger();
 
-	void InitializeLogicalDevice(std::span<const char* const> deviceLayers,
-								 std::span<const char* const> deviceExtensions);
-
-	[[nodiscard]] constexpr bool IsDebugMessengerInitialized() const noexcept
-	{
-		return m_DebugMessenger.has_value();
-	}
-
-	[[nodiscard]] constexpr bool IsLogicalDeviceInitialized() const noexcept
-	{
-		return m_LogicalDevice.has_value();
-	}
+	void InitializeLogicalDevice(std::span<const char* const> deviceExtensions);
 
 	[[nodiscard]] constexpr vk::Instance GetVulkanInstance() const noexcept
 	{
 		return m_VulkanInstance;
 	}
 
-	[[nodiscard]] constexpr vk::DebugUtilsMessengerEXT GetDebugMessenger() const
+	[[nodiscard]] constexpr vk::DebugUtilsMessengerEXT GetDebugMessenger()
+		const noexcept
 	{
-		return m_DebugMessenger.value();
+		return m_DebugMessenger;
 	}
 
-	[[nodiscard]] constexpr vk::Device GetLogicalDevice() const
+	[[nodiscard]] constexpr vk::Device GetLogicalDevice() const noexcept
 	{
-		return m_LogicalDevice.value();
+		return m_LogicalDevice;
+	}
+
+	[[nodiscard]] constexpr vk::Queue GetWorkQueue() const noexcept
+	{
+		return m_WorkQueue;
 	}
 
 private:
 	vk::DynamicLoader m_DynamicLoader;
 	vk::Instance m_VulkanInstance;
 
-	std::optional<vk::DebugUtilsMessengerEXT> m_DebugMessenger;
-	std::optional<vk::Device> m_LogicalDevice;
+	vk::DebugUtilsMessengerEXT m_DebugMessenger;
+	vk::PhysicalDevice m_PhyiscalDevice;
+	vk::Device m_LogicalDevice;
+	vk::Queue m_WorkQueue;
 };

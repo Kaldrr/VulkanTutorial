@@ -87,12 +87,14 @@ VulkanInstance::VulkanInstance(const std::span<const char* const> vulkanLayers,
 		.apiVersion         = VulkanVersion,
 	};
 
-	const std::set<std::string>& supportedLayerExtensions = vk::getInstanceExtensions();
+	const std::set<std::string>& supportedLayerExtensions =
+		vk::getInstanceExtensions();
 	for (const char* const layerExtension : vulkanExtensions)
 	{
 		if (!supportedLayerExtensions.contains(layerExtension))
 		{
-			fmt::println(stderr, "Layer extension {} is not supported", layerExtension);
+			fmt::println(stderr, "Layer extension {} is not supported",
+						 layerExtension);
 			// throw std::runtime_error{ "Unsupported extension" };
 		}
 	}
@@ -111,15 +113,8 @@ VulkanInstance::VulkanInstance(const std::span<const char* const> vulkanLayers,
 
 VulkanInstance::~VulkanInstance() noexcept
 {
-	if (m_LogicalDevice.has_value())
-	{
-		m_LogicalDevice->destroy();
-	}
-
-	if (m_DebugMessenger.has_value())
-	{
-		m_VulkanInstance.destroy(*m_DebugMessenger);
-	}
+	m_LogicalDevice.destroy();
+	m_VulkanInstance.destroy(m_DebugMessenger);
 	m_VulkanInstance.destroy();
 }
 
@@ -133,12 +128,12 @@ void VulkanInstance::InitializeDebugMessenger()
 			.messageType = vk::DebugUtilsMessageTypeFlagBitsEXT::eGeneral |
 						   vk::DebugUtilsMessageTypeFlagBitsEXT::eValidation |
 						   vk::DebugUtilsMessageTypeFlagBitsEXT::ePerformance,
-			.pfnUserCallback = &DebugCallback });
+			.pfnUserCallback = &DebugCallback,
+		});
 }
 
 void VulkanInstance::InitializeLogicalDevice(
-    const std::span<const char* const> deviceLayers,
-    const std::span<const char* const> deviceExtensions)
+	const std::span<const char* const> deviceExtensions)
 {
 	const std::set<std::string>& supportedExtensions = vk::getDeviceExtensions();
 	for (const char* const deviceExtension : deviceExtensions)
@@ -160,16 +155,15 @@ void VulkanInstance::InitializeLogicalDevice(
 
 	// TODO: make some smarter device selection?
 	constexpr std::size_t DeviceIndex = 0;
-
-	const vk::PhysicalDevice& defaultDevice = physicalDevices.at(DeviceIndex);
+	m_PhyiscalDevice                  = physicalDevices.at(DeviceIndex);
 
 	const vk::PhysicalDeviceProperties deviceProperties{
-		defaultDevice.getProperties()
+		m_PhyiscalDevice.getProperties()
 	};
 	const std::string_view deviceName{ deviceProperties.deviceName };
 	fmt::print("Using device {}\n", deviceName);
 
-	const QueueFamilyIndices queueIndices = FindQueueFamilies(defaultDevice);
+	const QueueFamilyIndices queueIndices = FindQueueFamilies(m_PhyiscalDevice);
 	if (!queueIndices.IsComplete())
 	{
 		throw std::runtime_error{ "Failed to find expected queues on the device!" };
@@ -182,16 +176,17 @@ void VulkanInstance::InitializeLogicalDevice(
 		.pQueuePriorities = &QueuePriority
 	};
 
-	constexpr vk::PhysicalDeviceFeatures DeviceFeatures{};
-	m_LogicalDevice = defaultDevice.createDevice(vk::DeviceCreateInfo{
+	// Device layers are deprecated, only accept extensions
+	constexpr vk::PhysicalDeviceFeatures DeviceFeatures{ .samplerAnisotropy =
+															 true };
+	m_LogicalDevice = m_PhyiscalDevice.createDevice(vk::DeviceCreateInfo{
 		.queueCreateInfoCount = 1,
 		.pQueueCreateInfos    = &deviceQueueCreateInfo,
-		.enabledLayerCount    = static_cast<std::uint32_t>(deviceLayers.size()),
-		.ppEnabledLayerNames  = deviceLayers.data(),
 		.enabledExtensionCount =
 			static_cast<std::uint32_t>(deviceExtensions.size()),
 		.ppEnabledExtensionNames = deviceExtensions.data(),
 		.pEnabledFeatures        = &DeviceFeatures });
+	m_WorkQueue = m_LogicalDevice.getQueue(queueIndices.GraphicsFamily.value(), 0);
 
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(*m_LogicalDevice);
+	VULKAN_HPP_DEFAULT_DISPATCHER.init(m_LogicalDevice);
 }

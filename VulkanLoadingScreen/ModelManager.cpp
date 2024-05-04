@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cassert>
 #include <cstdint>
+#include <execution>
 #include <numeric>
 #include <ranges>
 #include <type_traits>
@@ -76,38 +77,38 @@ void ModelManager::LoadModel(const std::string_view modelName,
 
 	// Reduce with different types is difficult D:
 
-	const std::uint32_t vertexCount =
-		std::reduce(begin(sceneMeshes), end(sceneMeshes), 0U,
-					Overload{
-						[](const aiMesh* const lhs, const std::uint32_t rhs) {
-							return lhs->mNumVertices + rhs;
-						},
-						[](const std::uint32_t lhs, const aiMesh* const rhs) {
-							return lhs + rhs->mNumVertices;
-						},
-						[](const std::uint32_t lhs, const std::uint32_t rhs) {
-							return lhs + rhs;
-						},
-						[](const aiMesh* const lhs, const aiMesh* const rhs) {
-							return lhs->mNumVertices + rhs->mNumVertices;
-						},
-					});
-	const std::uint32_t indexCount =
-		std::reduce(begin(sceneMeshes), end(sceneMeshes), 0U,
-					Overload{
-						[](const aiMesh* const lhs, const std::uint32_t rhs) {
-							return lhs->mNumFaces * 3 + rhs;
-						},
-						[](const std::uint32_t lhs, const aiMesh* const rhs) {
-							return lhs + rhs->mNumFaces * 3;
-						},
-						[](const std::uint32_t lhs, const std::uint32_t rhs) {
-							return lhs + rhs;
-						},
-						[](const aiMesh* const lhs, const aiMesh* const rhs) {
-							return lhs->mNumFaces * 3 + rhs->mNumFaces * 3;
-						},
-					});
+	const std::uint32_t vertexCount = std::reduce(
+		std::execution::par_unseq, begin(sceneMeshes), end(sceneMeshes), 0U,
+		Overload{
+			[](const aiMesh* const lhs, const std::uint32_t rhs) {
+				return lhs->mNumVertices + rhs;
+			},
+			[](const std::uint32_t lhs, const aiMesh* const rhs) {
+				return lhs + rhs->mNumVertices;
+			},
+			[](const std::uint32_t lhs, const std::uint32_t rhs) {
+				return lhs + rhs;
+			},
+			[](const aiMesh* const lhs, const aiMesh* const rhs) {
+				return lhs->mNumVertices + rhs->mNumVertices;
+			},
+		});
+	const std::uint32_t indexCount = std::reduce(
+		std::execution::par_unseq, begin(sceneMeshes), end(sceneMeshes), 0U,
+		Overload{
+			[](const aiMesh* const lhs, const std::uint32_t rhs) {
+				return lhs->mNumFaces * 3 + rhs;
+			},
+			[](const std::uint32_t lhs, const aiMesh* const rhs) {
+				return lhs + rhs->mNumFaces * 3;
+			},
+			[](const std::uint32_t lhs, const std::uint32_t rhs) {
+				return lhs + rhs;
+			},
+			[](const aiMesh* const lhs, const aiMesh* const rhs) {
+				return lhs->mNumFaces * 3 + rhs->mNumFaces * 3;
+			},
+		});
 
 	const vk::DeviceSize vertexBufferSize =
 		static_cast<vk::DeviceSize>(vertexCount) * sizeof(Vertex);
@@ -137,9 +138,9 @@ void ModelManager::LoadModel(const std::string_view modelName,
 
 	for (const aiMesh* const mesh : sceneMeshes)
 	{
-		const std::span<aiVector3D> meshVertices{ mesh->mVertices,
+		const std::span<const aiVector3D> meshVertices{ mesh->mVertices,
 												  mesh->mNumVertices };
-		const std::span<aiVector3D> meshTextureCoords{ mesh->mTextureCoords[0],
+		const std::span<const aiVector3D> meshTextureCoords{ mesh->mTextureCoords[0],
 													   mesh->mNumVertices };
 
 		constexpr auto TransformFn = [](const auto& zipElement) {
