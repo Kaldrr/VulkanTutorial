@@ -1,12 +1,13 @@
-#include <VulkanLoadingScreen/Vertex.h>
-#include <VulkanLoadingScreen/VulkanHelpers.h>
-#include <VulkanLoadingScreen/VulkanRenderer.h>
+#include <VulkanTutorial/Vertex.h>
+#include <VulkanTutorial/VulkanHelpers.h>
+#include <VulkanTutorial/VulkanRenderer.h>
 
 #include <QFile>
 #include <QVulkanFunctions>
 
 #include <fmt/core.h>
 
+#include <array>
 #include <filesystem>
 
 // QMatrix4x4 includes a 'flag' which would make copying harder
@@ -28,14 +29,15 @@ struct UniformBufferObject
 };
 } // namespace
 
-VulkanRenderer::VulkanRenderer(QVulkanWindow* const window, const bool msaa)
-    : m_Window{ window }
+VulkanRenderer::VulkanRenderer(QVulkanWindow& window,
+                               const bool msaa)
+    : m_Window{ &window }
     , m_ConcurrentFrameCount{ static_cast<std::uint32_t>(
 	      m_Window->concurrentFrameCount()) }
 {
 	if (msaa)
 	{
-		const QList<int> counts = window->supportedSampleCounts();
+		const QList<int> counts = m_Window->supportedSampleCounts();
 		qDebug() << "Supported sample counts:" << counts;
 
 		constexpr int StartingSampleCount = 16;
@@ -344,7 +346,7 @@ void VulkanRenderer::CreateTextureSampler()
 		.addressModeV            = vk::SamplerAddressMode::eRepeat,
 		.addressModeW            = vk::SamplerAddressMode::eRepeat,
 		.mipLodBias              = 0.F,
-		.anisotropyEnable        = VK_TRUE,
+		.anisotropyEnable        = vk::True,
 		.maxAnisotropy           = deviceProperties.limits.maxSamplerAnisotropy,
 		.compareEnable           = VK_FALSE,
 		.compareOp               = vk::CompareOp::eAlways,
@@ -359,6 +361,7 @@ void VulkanRenderer::initResources()
 {
 	m_Device         = vk::Device{ m_Window->device() };
 	m_PhysicalDevice = vk::PhysicalDevice{ m_Window->physicalDevice() };
+
 	VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
 
 	m_ModelManager.SetResouces(m_Device, m_PhysicalDevice,
@@ -459,8 +462,8 @@ void VulkanRenderer::initResources()
 	CreateDescriptorSets();
 
 	constexpr vk::PipelineDepthStencilStateCreateInfo DepthStencil{
-		.depthTestEnable       = VK_TRUE,
-		.depthWriteEnable      = VK_TRUE,
+		.depthTestEnable       = vk::True,
+		.depthWriteEnable      = vk::True,
 		.depthCompareOp        = vk::CompareOp::eLess,
 		.depthBoundsTestEnable = VK_FALSE,
 		.stencilTestEnable     = VK_FALSE,

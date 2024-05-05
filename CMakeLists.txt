@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(
-  VulkanLoadingScreen
+  VulkanTutorial
   VERSION 0.1
   LANGUAGES CXX)
 
@@ -52,7 +52,7 @@ endif()
 
 project_options(
   PREFIX
-  "VulkanLoadingScreen"
+  "VulkanTutorial"
   ${ENABLE_CPPCHECK}
   ${ENABLE_CLANG_TIDY}
   ${ENABLE_VS_ANALYSIS}
@@ -64,4 +64,4 @@ project_options(
   ${USE_SANITIZER_MEMORY}
   WARNINGS_AS_ERRORS)
 
-add_subdirectory(VulkanLoadingScreen)
+add_subdirectory(VulkanTutorial)

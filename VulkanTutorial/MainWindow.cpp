@@ -1,11 +1,11 @@
-#include <VulkanLoadingScreen/MainWindow.h>
-#include <VulkanLoadingScreen/VulkanRenderer.h>
+#include <VulkanTutorial/MainWindow.h>
+#include <VulkanTutorial/VulkanRenderer.h>
 
 namespace
 {
 void SetDeviceFeatures(VkPhysicalDeviceFeatures& deviceFeature)
 {
-	deviceFeature.samplerAnisotropy = VK_TRUE;
+	deviceFeature.samplerAnisotropy = vk::True;
 }
 } // namespace
 
@@ -28,5 +28,5 @@ QVulkanWindowRenderer* MainWindow::createRenderer()
 	// it
 
 	// NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
-	return new VulkanRenderer{ this, MSAAEnabled };
+	return new VulkanRenderer{ *this, MSAAEnabled };
 }

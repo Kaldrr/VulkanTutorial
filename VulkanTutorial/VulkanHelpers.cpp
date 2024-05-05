@@ -1,4 +1,4 @@
-#include <VulkanLoadingScreen/VulkanHelpers.h>
+#include <VulkanTutorial/VulkanHelpers.h>
 
 vk::RenderPass CreateRenderPass(const vk::Device device,
                                 const VkFormat colorFormat,

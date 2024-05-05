@@ -2,7 +2,7 @@
 
 #include <QVulkanWindowRenderer>
 
-#include <VulkanLoadingScreen/ModelManager.h>
+#include <VulkanTutorial/ModelManager.h>
 
 #include <array>
 
@@ -11,7 +11,7 @@
 class [[nodiscard]] VulkanRenderer final : public QVulkanWindowRenderer
 {
 public:
-	explicit VulkanRenderer(QVulkanWindow* window, bool msaa = false);
+	explicit VulkanRenderer(QVulkanWindow& window, bool msaa = false);
 	VulkanRenderer(const VulkanRenderer&)                = delete;
 	VulkanRenderer(VulkanRenderer&&) noexcept            = delete;
 	VulkanRenderer& operator=(const VulkanRenderer&)     = delete;

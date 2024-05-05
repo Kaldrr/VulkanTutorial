@@ -1,4 +1,4 @@
-#include <VulkanLoadingScreen/VulkanInstance.h>
+#include <VulkanTutorial/VulkanInstance.h>
 
 #include <optional>
 #include <set>
@@ -18,10 +18,11 @@ struct QueueFamilyIndices
 {
 public:
 	std::optional<std::uint32_t> GraphicsFamily{ std::nullopt };
+	std::optional<std::uint32_t> PresentationFamily{ std::nullopt };
 
 	constexpr bool IsComplete() const noexcept
 	{
-		return GraphicsFamily.has_value();
+		return GraphicsFamily.has_value() && PresentationFamily.has_value();
 	}
 };
 
@@ -41,7 +42,8 @@ DebugCallback(const VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	return VK_FALSE;
 }
 
-QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice physicalDevice)
+QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice physicalDevice,
+									 const vk::SurfaceKHR vulkanSurface)
 {
 	QueueFamilyIndices queueFamilyIndices{};
 
@@ -51,10 +53,14 @@ QueueFamilyIndices FindQueueFamilies(const vk::PhysicalDevice physicalDevice)
 	for (std::uint32_t idx{ 0 };
 	     const vk::QueueFamilyProperties& queueProperties : queueFamilies)
 	{
-		if (queueProperties.queueFlags &
-		    vk::QueueFlags{ VkQueueFlagBits::VK_QUEUE_GRAPHICS_BIT })
+		if (queueProperties.queueFlags & vk::QueueFlagBits::eGraphics)
 		{
 			queueFamilyIndices.GraphicsFamily = idx;
+		}
+
+		if (physicalDevice.getSurfaceSupportKHR(idx, vulkanSurface) == vk::True)
+		{
+			queueFamilyIndices.PresentationFamily = idx;
 		}
 
 		if (queueFamilyIndices.IsComplete())
@@ -82,7 +88,7 @@ VulkanInstance::VulkanInstance(const std::span<const char* const> vulkanLayers,
 
 	constexpr std::uint32_t ApplicationVersion = 1;
 	constexpr vk::ApplicationInfo AppInfo{
-		.pApplicationName   = "VulkanLoadingScreen",
+		.pApplicationName   = "VulkanTutorialQt",
 		.applicationVersion = ApplicationVersion,
 		.apiVersion         = VulkanVersion,
 	};
@@ -113,7 +119,8 @@ VulkanInstance::VulkanInstance(const std::span<const char* const> vulkanLayers,
 
 VulkanInstance::~VulkanInstance() noexcept
 {
-	m_LogicalDevice.destroy();
+	//m_Device.destroy(m_CommandPool);
+	m_Device.destroy();
 	m_VulkanInstance.destroy(m_DebugMessenger);
 	m_VulkanInstance.destroy();
 }
@@ -132,8 +139,9 @@ void VulkanInstance::InitializeDebugMessenger()
 		});
 }
 
-void VulkanInstance::InitializeLogicalDevice(
-	const std::span<const char* const> deviceExtensions)
+void VulkanInstance::InitializeDevice(
+    const std::span<const char* const> deviceExtensions,
+    const vk::SurfaceKHR vulkanSurface)
 {
 	const std::set<std::string>& supportedExtensions = vk::getDeviceExtensions();
 	for (const char* const deviceExtension : deviceExtensions)
@@ -163,7 +171,8 @@ void VulkanInstance::InitializeLogicalDevice(
 	const std::string_view deviceName{ deviceProperties.deviceName };
 	fmt::print("Using device {}\n", deviceName);
 
-	const QueueFamilyIndices queueIndices = FindQueueFamilies(m_PhyiscalDevice);
+	const QueueFamilyIndices queueIndices =
+		FindQueueFamilies(m_PhyiscalDevice, vulkanSurface);
 	if (!queueIndices.IsComplete())
 	{
 		throw std::runtime_error{ "Failed to find expected queues on the device!" };
@@ -177,16 +186,21 @@ void VulkanInstance::InitializeLogicalDevice(
 	};
 
 	// Device layers are deprecated, only accept extensions
-	constexpr vk::PhysicalDeviceFeatures DeviceFeatures{ .samplerAnisotropy =
-															 true };
-	m_LogicalDevice = m_PhyiscalDevice.createDevice(vk::DeviceCreateInfo{
-		.queueCreateInfoCount = 1,
-		.pQueueCreateInfos    = &deviceQueueCreateInfo,
-		.enabledExtensionCount =
+	constexpr vk::PhysicalDeviceFeatures DeviceFeatures{
+		.samplerAnisotropy = vk::True,
+	};
+	m_Device    = m_PhyiscalDevice.createDevice(vk::DeviceCreateInfo{
+		   .queueCreateInfoCount = 1,
+		   .pQueueCreateInfos    = &deviceQueueCreateInfo,
+		   .enabledExtensionCount =
 			static_cast<std::uint32_t>(deviceExtensions.size()),
-		.ppEnabledExtensionNames = deviceExtensions.data(),
-		.pEnabledFeatures        = &DeviceFeatures });
-	m_WorkQueue = m_LogicalDevice.getQueue(queueIndices.GraphicsFamily.value(), 0);
+		   .ppEnabledExtensionNames = deviceExtensions.data(),
+		   .pEnabledFeatures        = &DeviceFeatures });
+	m_WorkQueue = m_Device.getQueue(queueIndices.GraphicsFamily.value(), 0);
 
-	VULKAN_HPP_DEFAULT_DISPATCHER.init(m_LogicalDevice);
+	m_CommandPool = m_Device.createCommandPool(vk::CommandPoolCreateInfo{
+		.flags            = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+		.queueFamilyIndex = queueIndices.GraphicsFamily.value() });
+
+	// VULKAN_HPP_DEFAULT_DISPATCHER.init(m_Device);
 }

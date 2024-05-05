@@ -2,7 +2,6 @@
 
 #include <vulkan/vulkan.hpp>
 
-#include <optional>
 #include <span>
 
 class [[nodiscard]] VulkanInstance
@@ -19,7 +18,8 @@ public:
 
 	void InitializeDebugMessenger();
 
-	void InitializeLogicalDevice(std::span<const char* const> deviceExtensions);
+	void InitializeDevice(std::span<const char* const> deviceExtensions,
+						  vk::SurfaceKHR vulkanSurface);
 
 	[[nodiscard]] constexpr vk::Instance GetVulkanInstance() const noexcept
 	{
@@ -32,14 +32,23 @@ public:
 		return m_DebugMessenger;
 	}
 
-	[[nodiscard]] constexpr vk::Device GetLogicalDevice() const noexcept
+	[[nodiscard]] constexpr vk::PhysicalDevice GetPhysicalDevice() const noexcept
 	{
-		return m_LogicalDevice;
+		return m_PhyiscalDevice;
+	}
+
+	[[nodiscard]] constexpr vk::Device GetDevice() const noexcept
+	{
+		return m_Device;
 	}
 
 	[[nodiscard]] constexpr vk::Queue GetWorkQueue() const noexcept
 	{
 		return m_WorkQueue;
+	}
+
+	[[nodiscard]] constexpr vk::CommandPool GetCommandPool() const noexcept {
+		return m_CommandPool;
 	}
 
 private:
@@ -48,6 +57,7 @@ private:
 
 	vk::DebugUtilsMessengerEXT m_DebugMessenger;
 	vk::PhysicalDevice m_PhyiscalDevice;
-	vk::Device m_LogicalDevice;
+	vk::Device m_Device;
 	vk::Queue m_WorkQueue;
+	vk::CommandPool m_CommandPool;
 };

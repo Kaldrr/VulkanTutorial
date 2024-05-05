@@ -1,6 +1,6 @@
-#include <VulkanLoadingScreen/ModelManager.h>
-#include <VulkanLoadingScreen/Vertex.h>
-#include <VulkanLoadingScreen/VulkanHelpers.h>
+#include <VulkanTutorial/ModelManager.h>
+#include <VulkanTutorial/Vertex.h>
+#include <VulkanTutorial/VulkanHelpers.h>
 
 #include <assimp/DefaultLogger.hpp>
 #include <assimp/Importer.hpp>

@@ -1,5 +1,5 @@
-#include <VulkanLoadingScreen/MainWindow.h>
-#include <VulkanLoadingScreen/VulkanInstance.h>
+#include <VulkanTutorial/MainWindow.h>
+#include <VulkanTutorial/VulkanInstance.h>
 
 #include <QApplication>
 #include <QByteArray>
