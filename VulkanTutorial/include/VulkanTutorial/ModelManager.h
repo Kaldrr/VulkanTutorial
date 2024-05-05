@@ -1,25 +1,26 @@
 #pragma once
 #include <cstdint>
 #include <filesystem>
+#include <string_view>
 
 #include <vulkan/vulkan.hpp>
 
 namespace Qt3DRender
 {
 class QMesh;
-}
+} // namespace Qt3DRender
 
 struct Model
 {
-	std::string m_ModelName{};
+	std::string ModelName;
 
-	std::uint32_t m_VertexCount{};
-	vk::Buffer m_VertexBuffer{};
-	vk::DeviceMemory m_VertexBufferMemory{};
+	std::uint32_t VertexCount{};
+	vk::Buffer VertexBuffer;
+	vk::DeviceMemory VertexBufferMemory;
 
-	std::uint32_t m_IndexCount{};
-	vk::Buffer m_IndexBuffer{};
-	vk::DeviceMemory m_IndexBufferMemory{};
+	std::uint32_t IndexCount{};
+	vk::Buffer IndexBuffer;
+	vk::DeviceMemory IndexBufferMemory;
 };
 
 class [[nodiscard]] ModelManager
@@ -37,9 +38,9 @@ public:
 	                 vk::CommandPool commandPool,
 	                 vk::Queue workQueue);
 
-	void LoadModel(std::string modelName,
-				   const std::filesystem::path& modelPath);
-	void RenderAllModels(vk::CommandBuffer commandBuffer);
+	void LoadModel(std::string_view modelName,
+	               const std::filesystem::path& modelPath);
+	void RenderAllModels(vk::CommandBuffer commandBuffer) const;
 	void UnloadAllModels();
 
 private:
@@ -48,5 +49,5 @@ private:
 	vk::CommandPool m_CommandPool;
 	vk::Queue m_WorkQueue;
 
-	std::vector<Model> m_LoadedModels{};
+	std::vector<Model> m_LoadedModels;
 };
